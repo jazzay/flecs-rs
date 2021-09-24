@@ -10,7 +10,7 @@
 #![allow(improper_ctypes)]
 
 // use std::os::raw::c_char;
-use std::mem::{MaybeUninit};
+use std::{any::TypeId, collections::HashMap, mem::{MaybeUninit}, sync::Mutex};
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
@@ -19,33 +19,57 @@ use component::*;
 
 // This is all WIP!
 
+lazy_static::lazy_static! {
+    static ref TYPE_MAP: Mutex<HashMap<TypeId, u64>> = {
+        let m = HashMap::new();
+		Mutex::new(m)
+    };
+}
+
+pub trait Component : 'static { }
+impl<T> Component for T where T: 'static {}
+
+pub fn component_id_for_type<T: Component>() -> ecs_entity_t {
+	// component MUST be registered ahead of time!
+	let type_id = TypeId::of::<T>();
+	let comp_id = TYPE_MAP.lock().unwrap().get(&type_id).unwrap().clone();	
+	comp_id
+}
+
 pub struct Entity {
 	entity: ecs_entity_t,
+	world: *mut ecs_world_t,
 }
 
 impl Entity {
-	pub fn new(entity: ecs_entity_t) -> Self {
-		Self { entity }
+	pub fn new(entity: ecs_entity_t, world: *mut ecs_world_t) -> Self {
+		Self { entity, world }
 	}
 
-	pub fn get<T: Default>(&mut self) -> T {
-		T::default()
+	pub fn get<T: Component>(&self) -> &T {
+		let comp_id = component_id_for_type::<T>();
+		let value = unsafe { ecs_get_id(self.world, self.entity, comp_id) };
+		unsafe { (value as *const T).as_ref().unwrap() }
 	}
 
-    pub fn get_mut<T>(&mut self/*bool *is_added = nullptr*/) -> *const T  {		
-        // auto comp_id = _::cpp_type<T>::id(m_world);
-        // ecs_assert(_::cpp_type<T>::size() != 0, ECS_INVALID_PARAMETER, NULL);
-        // return static_cast<T*>(
-        //     ecs_get_mut_w_entity(m_world, m_id, comp_id, is_added));
-		std::ptr::null()
+    pub fn get_mut<T: Component>(&mut self/*bool *is_added = nullptr*/) -> &mut T  {	
+		let comp_id = component_id_for_type::<T>();
+		let mut is_added = false;
+		let value = unsafe { ecs_get_mut_w_entity(self.world, self.entity, comp_id, &mut is_added) };
+		unsafe { (value as *mut T).as_mut().unwrap() }
     }
 
-	pub fn set<T>(&mut self, value: T) {
+	pub fn set<T: Component>(&mut self, value: T) {
+		let dest = self.get_mut::<T>();
+		*dest = value;
 	}
 }
 
 pub struct World {
-	world: *mut ecs_world_t	
+	world: *mut ecs_world_t,
+
+	// for now this is the simplest way to cache component IDs etc
+	// type_map: HashMap<TypeId, u64>,
 }
 
 impl World {
@@ -53,13 +77,14 @@ impl World {
 		let world = unsafe { ecs_init() };
 		//init_builtin_components();
 		Self {
-			world
+			world,
+			// type_map: HashMap::new(),
 		}
 	}
 
-	pub fn entity_new(&self) -> Entity {
+	pub fn entity_new(&mut self) -> Entity {
 		let entity = unsafe { ecs_new_id(self.world) };
-		Entity { entity }
+		Entity::new(entity, self.world)
 	}
 	
     pub fn progress(&self, delta_time: f32) -> bool {
@@ -70,7 +95,14 @@ impl World {
 		None
 	}
 
-	fn component<T>(&self, name: &str) -> Entity {
+	fn component<T: 'static>(&mut self) -> Entity {
+		let type_id = TypeId::of::<T>();
+
+		// see if we already cached it
+		if let Some(comp_id) = TYPE_MAP.lock().unwrap().get(&type_id) {
+			return Entity::new(*comp_id, self.world);
+		}
+
 		// let result: Entity = pod_component<T>(world, name);
 	
 		// if (_::cpp_type<T>::size()) {
@@ -79,8 +111,9 @@ impl World {
 		
 		let type_name = std::any::type_name::<T>();
 		let layout = std::alloc::Layout::new::<T>();
-		let comp = register_component(self.world, type_name, layout);
-		Entity::new(comp)
+		let comp_id = register_component(self.world, type_name, layout);
+		TYPE_MAP.lock().unwrap().insert(type_id, comp_id);
+		Entity::new(comp_id, self.world)
 	}	
 }
 
@@ -89,7 +122,7 @@ mod tests {
 	use super::*;
 	use std::alloc::Layout;
 
-	#[derive(Default, Debug)]
+	#[derive(Default, Debug, PartialEq)]
 	struct Position {
 		x: f32,
 		y: f32,
@@ -97,12 +130,15 @@ mod tests {
 
     #[test]
     fn flecs_wrappers() {
-		let world = World::new();
-		let posC = world.component::<Position>("Position");
+		let mut world = World::new();
+		let posC = world.component::<Position>();
 
 		let mut entity = world.entity_new();
-		entity.set(Position { x: 0.0, y: 1.0 });
+		entity.set(Position { x: 1.0, y: 2.0 });
+
 		let pos = entity.get::<Position>();
+		assert_eq!(pos, &Position { x: 1.0, y: 2.0 });
+
 		println!("Pos = {:?}", pos);
 	}
 
