@@ -17,6 +17,9 @@ include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 mod component;
 use component::*;
 
+pub mod filter;
+pub use filter::*;
+
 // This is all WIP!
 //
 // TODOs:
@@ -106,6 +109,10 @@ impl World {
 		}
 	}
 
+	pub fn raw(&self) -> *mut ecs_world_t {
+		self.world
+	}
+
 	pub fn entity(&mut self) -> Entity {
 		let entity = unsafe { ecs_new_id(self.world) };
 		Entity::new(entity, self.world)
@@ -115,11 +122,11 @@ impl World {
         return unsafe { ecs_progress(self.world, delta_time) }
     }	
 
-	fn lookup(name: &str) -> Option<Entity> {
+	pub fn lookup(name: &str) -> Option<Entity> {
 		None
 	}
 
-	fn id<T: Component>(&mut self) -> Option<Entity> {
+	pub fn id<T: Component>(&mut self) -> Option<Entity> {
 		let type_id = TypeId::of::<T>();
 
 		// see if we already cached it
@@ -129,7 +136,7 @@ impl World {
 		None
 	}
 
-	fn component<T: 'static>(&mut self, name: Option<&str>) -> Entity {
+	pub fn component<T: 'static>(&mut self, name: Option<&str>) -> Entity {
 		let type_id = TypeId::of::<T>();
 
 		// see if we already cached it
@@ -160,6 +167,7 @@ impl Drop for World {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use super::filter::*;
 	use std::alloc::Layout;
 
 	#[derive(Default, Debug, PartialEq)]
