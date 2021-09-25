@@ -18,7 +18,13 @@ mod component;
 use component::*;
 
 // This is all WIP!
+//
+// TODOs:
+// - fix up string usage. rust -> C must null terminate!
 
+// This is causing problems in tests, as new worlds are created
+// but this does not get cleared. need a better strategy.
+// for now just reset it at end of test (when world is dropped?)
 lazy_static::lazy_static! {
     static ref TYPE_MAP: Mutex<HashMap<TypeId, u64>> = {
         let m = HashMap::new();
@@ -36,6 +42,7 @@ pub fn component_id_for_type<T: Component>() -> ecs_entity_t {
 	comp_id
 }
 
+#[derive(PartialEq, Eq, Debug)]
 pub struct Entity {
 	entity: ecs_entity_t,
 	world: *mut ecs_world_t,
@@ -44,6 +51,14 @@ pub struct Entity {
 impl Entity {
 	pub fn new(entity: ecs_entity_t, world: *mut ecs_world_t) -> Self {
 		Self { entity, world }
+	}
+
+	pub fn name(&self) -> &str {
+		let char_ptr = unsafe { ecs_get_name(self.world, self.entity) };
+		let c_str = unsafe { std::ffi::CStr::from_ptr(char_ptr) };
+		let name = c_str.to_str().unwrap();
+		println!("name(): {}", name);
+		name
 	}
 
 	pub fn get<T: Component>(&self) -> &T {
@@ -59,9 +74,18 @@ impl Entity {
 		unsafe { (value as *mut T).as_mut().unwrap() }
     }
 
-	pub fn set<T: Component>(&mut self, value: T) {
+	pub fn set<T: Component>(&mut self, value: T) -> &mut Self {
 		let dest = self.get_mut::<T>();
 		*dest = value;
+		self
+	}
+
+	pub fn add<T: Component>(&mut self) -> &mut Self {
+        // flecs_static_assert(is_flecs_constructible<T>::value,
+        //     "cannot default construct type: add T::T() or use emplace<T>()");
+		let comp_id = component_id_for_type::<T>();
+        unsafe { ecs_add_id(self.world, self.entity, comp_id) };
+		self
 	}
 }
 
@@ -82,7 +106,7 @@ impl World {
 		}
 	}
 
-	pub fn entity_new(&mut self) -> Entity {
+	pub fn entity(&mut self) -> Entity {
 		let entity = unsafe { ecs_new_id(self.world) };
 		Entity::new(entity, self.world)
 	}
@@ -95,7 +119,17 @@ impl World {
 		None
 	}
 
-	fn component<T: 'static>(&mut self) -> Entity {
+	fn id<T: Component>(&mut self) -> Option<Entity> {
+		let type_id = TypeId::of::<T>();
+
+		// see if we already cached it
+		if let Some(comp_id) = TYPE_MAP.lock().unwrap().get(&type_id) {
+			return Some(Entity::new(*comp_id, self.world));
+		}
+		None
+	}
+
+	fn component<T: 'static>(&mut self, name: Option<&str>) -> Entity {
 		let type_id = TypeId::of::<T>();
 
 		// see if we already cached it
@@ -109,12 +143,18 @@ impl World {
 		// 	_::register_lifecycle_actions<T>(world, result);
 		// }
 		
-		let type_name = std::any::type_name::<T>();
+		let symbol = std::any::type_name::<T>();
 		let layout = std::alloc::Layout::new::<T>();
-		let comp_id = register_component(self.world, type_name, layout);
+		let comp_id = register_component(self.world, name, symbol, layout);
 		TYPE_MAP.lock().unwrap().insert(type_id, comp_id);
 		Entity::new(comp_id, self.world)
 	}	
+}
+
+impl Drop for World {
+	fn drop(&mut self) {
+		TYPE_MAP.lock().unwrap().clear();
+	}
 }
 
 #[cfg(test)]
@@ -128,18 +168,44 @@ mod tests {
 		y: f32,
 	}
 
+	#[derive(Default, Debug, PartialEq)]
+	struct Velocity {
+		x: f32,
+		y: f32,
+	}
+
+	struct Serializable {}
+
     #[test]
     fn flecs_wrappers() {
 		let mut world = World::new();
-		let posC = world.component::<Position>();
+		let pos_e = world.component::<Position>(None);
+		let vel_e = world.component::<Velocity>(None);
+		assert_ne!(pos_e, vel_e);
 
-		let mut entity = world.entity_new();
+		let mut entity = world.entity();
 		entity.set(Position { x: 1.0, y: 2.0 });
+		entity.set(Velocity { x: 2.0, y: 4.0 });
 
+		// something broke here??
 		let pos = entity.get::<Position>();
 		assert_eq!(pos, &Position { x: 1.0, y: 2.0 });
 
-		println!("Pos = {:?}", pos);
+		let vel = entity.get::<Velocity>();
+		assert_eq!(vel, &Velocity { x: 2.0, y: 4.0 });
+	}
+
+    #[test]
+    fn flecs_components_are_entities() {
+		let mut world = World::new();
+		world.component::<Position>(Some("Position"));	// you can give a comp a name
+		world.component::<Serializable>(None);
+
+		let mut pos_e = world.id::<Position>().unwrap();
+		assert_eq!(pos_e.name(), "Position");
+		
+		// It's possible to add components like you would for any entity
+		pos_e.add::<Serializable>();	
 	}
 
     #[test]
@@ -150,7 +216,7 @@ mod tests {
 		let is_alive = unsafe { ecs_is_alive(world, entity) };
 		assert_eq!(is_alive, true);
 
-		let component = register_component(world, "test", Layout::from_size_align(16, 4).unwrap());
+		let component = register_component(world, Some("A"), "flecs::tests::A", Layout::from_size_align(16, 4).unwrap());
 
 		let entity = unsafe { ecs_set_id(
 			world,
