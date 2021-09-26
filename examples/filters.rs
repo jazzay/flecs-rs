@@ -14,49 +14,55 @@ struct Velocity {
 
 // struct Serializable {}
 
-fn create_some_filters() -> World {
-	println!("Filter example starting...");
-
-	let mut world = World::new();
-	world.component::<Position>(None);
-	world.component::<Velocity>(None);
-
-	world.entity_builder()
-		.set(Position { x: 1.0, y: 2.0 })
-		.set(Velocity { x: 2.0, y: 4.0 })
-		.build();
-
-	world.entity_builder()
-		.set(Position { x: 3.0, y: 9.0 })
-		.set(Velocity { x: 0.0, y: 10.0 })
-		.build();
-
-	world
+fn create_some_entities(world: &mut World, count: usize) {
+	for _ in 0..count {
+		world.entity_builder()
+			.set(Position { x: 1.0, y: 2.0 })
+			.set(Velocity { x: 2.0, y: 4.0 })
+			.build();
+	}
 }
 
-fn tick(world: &mut World) {
+fn tick(world: &mut World) -> [f32; 2] {
 	let mut result = [ 0.0, 0.0 ];
 	let filter = Filter::new_2::<Position, Velocity>(world.raw());
 	filter.each(|pos: &Position, vel: &Velocity| {
 		result[0] += pos.x + vel.x;
 		result[1] += pos.y + vel.y;
-		println!("Iter: {:?}  {:?}", pos, vel);
+		// println!("Iter: {:?}  {:?}", pos, vel);
 	});
-	assert_eq!(result, [6.0, 25.0]);
+	// assert_eq!(result, [6.0, 25.0]);
+	result
 }
 
 fn main() {
-	let mut world = create_some_filters();
-	tick(&mut world);
+	println!("Filter example starting...");
+
+	let mut result = [0.0, 0.0];
+	for _ in 0..1000 {
+		let mut world = World::new();
+		world.component::<Position>(None);
+		world.component::<Velocity>(None);
+	
+		create_some_entities(&mut world, 100000);
+		result = tick(&mut world);
+	}
+	println!("Result: {:?}", result);
 }
 
 // We can also run these within tests. Need to figure out best org
 //
 #[cfg(test)]
 mod tests {
+	use super::*;
+
     #[test]
     fn flecs_filters() {
-		let mut world = super::create_some_filters();
+		let mut world = World::new();
+		world.component::<Position>(None);
+		world.component::<Velocity>(None);
+	
+		create_some_entities(&mut world, 1000);
 		super::tick(&mut world);
 		//assert_eq!(result[0], 22.0);
 	}

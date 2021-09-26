@@ -3,6 +3,9 @@ name = "flecs"
 version = "0.1.0"
 edition = "2018"
 
+[profile.release]
+debug = true
+
 [dependencies]
 lazy_static = "1.4.0"
 
