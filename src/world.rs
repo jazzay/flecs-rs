@@ -10,6 +10,8 @@ pub struct World {
 impl World {
 	pub fn new() -> Self {
 		let world = unsafe { ecs_init() };
+		WorldInfoCache::insert(world);
+		
 		//init_builtin_components();
 		Self {
 			world,
@@ -46,7 +48,7 @@ impl World {
 	}
 
 	pub fn get<T: Component>(&self, entity: Entity) -> &T {
-		let comp_id = component_id_for_type::<T>();
+		let comp_id = WorldInfoCache::component_id_for_type::<T>(self.world);
 		let value = unsafe { ecs_get_id(self.world, entity.raw(), comp_id) };
 		unsafe { (value as *const T).as_ref().unwrap() }
 	}
@@ -54,7 +56,7 @@ impl World {
 	pub fn add<T: Component>(self, entity: Entity) -> Self {
         // flecs_static_assert(is_flecs_constructible<T>::value,
         //     "cannot default construct type: add T::T() or use emplace<T>()");
-		let comp_id = component_id_for_type::<T>();
+		let comp_id = WorldInfoCache::component_id_for_type::<T>(self.world);
         unsafe { ecs_add_id(self.world, entity.raw(), comp_id) };
 		self
 	}
@@ -63,18 +65,17 @@ impl World {
 		let type_id = TypeId::of::<T>();
 
 		// see if we already cached it
-		if let Some(comp_id) = TYPE_MAP.lock().unwrap().get(&type_id) {
-			return Some(Entity::new(*comp_id));
+		let comp_id = WorldInfoCache::try_get_component_id_for_type::<T>(self.world);
+		if let Some(comp_id) = comp_id {
+			return Some(Entity::new(comp_id));
 		}
 		None
 	}
 
 	pub fn component<T: 'static>(&mut self, name: Option<&str>) -> Entity {
-		let type_id = TypeId::of::<T>();
-
 		// see if we already cached it
-		if let Some(comp_id) = TYPE_MAP.lock().unwrap().get(&type_id) {
-			return Entity::new(*comp_id);
+		if let Some(comp_id) = WorldInfoCache::try_get_component_id_for_type::<T>(self.world) {
+			return Entity::new(comp_id);
 		}
 
 		// let result: Entity = pod_component<T>(world, name);
@@ -83,16 +84,18 @@ impl World {
 		// 	_::register_lifecycle_actions<T>(world, result);
 		// }
 		
+		let type_id = TypeId::of::<T>();
 		let symbol = std::any::type_name::<T>();
 		let layout = std::alloc::Layout::new::<T>();
 		let comp_id = register_component(self.world, name, symbol, layout);
-		TYPE_MAP.lock().unwrap().insert(type_id, comp_id);
+		WorldInfoCache::register_component_id_for_type_id(self.world, comp_id, type_id);
 		Entity::new(comp_id)
 	}	
 }
 
-impl Drop for World {
-	fn drop(&mut self) {
-		TYPE_MAP.lock().unwrap().clear();
-	}
-}
+// Now that cache is world specific probably don't need this for now
+// impl Drop for World {
+// 	fn drop(&mut self) {
+// 		TYPE_MAP.lock().unwrap().clear();
+// 	}
+// }

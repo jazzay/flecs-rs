@@ -13,7 +13,7 @@ pub fn get_component_info(world: *mut ecs_world_t, comp_e: ecs_entity_t) {
 }
 
 pub fn register_component(world: *mut ecs_world_t, name: Option<&str>, symbol: &str, layout: std::alloc::Layout) -> ecs_entity_t {
-	println!("register_component - name: {:?}, symbol: {}, {:?}", name, symbol, layout);
+	// println!("register_component - name: {:?}, symbol: {}, {:?}", name, symbol, layout);
 
 	// How C code registers a component
 	//ECS_COMPONENT(world, Position);
@@ -92,7 +92,7 @@ pub fn register_component(world: *mut ecs_world_t, name: Option<&str>, symbol: &
 
 
 	let comp_entity = unsafe { ecs_component_init(world, &comp_desc) };
-	println!("register_component - comp_entity {}", comp_entity);
+	// println!("register_component - comp_entity {}", comp_entity);
 	comp_entity
 }
 

@@ -16,8 +16,10 @@ pub struct Filter {
 impl Filter {
 	pub fn new_2<A: Component, B: Component>(world: *mut ecs_world_t) -> Self {
 		let mut desc: ecs_filter_desc_t = unsafe { MaybeUninit::zeroed().assume_init() };
-		desc.terms[0].id = component_id_for_type::<A>();
-		desc.terms[1].id = component_id_for_type::<B>();
+
+		// TODO: add batch type lookup!
+		desc.terms[0].id = WorldInfoCache::component_id_for_type::<A>(world);
+		desc.terms[1].id = WorldInfoCache::component_id_for_type::<B>(world);
 
 		let filter: ecs_filter_t = unsafe { MaybeUninit::zeroed().assume_init() };
 		let mut filter = Box::new(filter);

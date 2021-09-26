@@ -34,8 +34,8 @@ impl EntityBuilder {
 	}
 
 	// private helper
-    fn get_mut<T: Component>(&mut self) -> &mut T  {	
-		let comp_id = component_id_for_type::<T>();
+    fn get_mut<T: Component>(&mut self) -> &mut T  {
+		let comp_id = WorldInfoCache::component_id_for_type::<T>(self.world);
 		let mut is_added = false;
 		let value = unsafe { ecs_get_mut_w_entity(self.world, self.entity, comp_id, &mut is_added) };
 		unsafe { (value as *mut T).as_mut().unwrap() }
@@ -50,7 +50,7 @@ impl EntityBuilder {
 	pub fn add<T: Component>(self) -> Self {
         // flecs_static_assert(is_flecs_constructible<T>::value,
         //     "cannot default construct type: add T::T() or use emplace<T>()");
-		let comp_id = component_id_for_type::<T>();
+		let comp_id = WorldInfoCache::component_id_for_type::<T>(self.world);
         unsafe { ecs_add_id(self.world, self.entity, comp_id) };
 		self
 	}
@@ -81,7 +81,7 @@ impl EntityRef {
 	}
 
 	pub fn get<T: Component>(&self) -> &T {
-		let comp_id = component_id_for_type::<T>();
+		let comp_id = WorldInfoCache::component_id_for_type::<T>(self.world);
 		let value = unsafe { ecs_get_id(self.world, self.entity, comp_id) };
 		unsafe { (value as *const T).as_ref().unwrap() }
 	}

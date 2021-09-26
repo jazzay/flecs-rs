@@ -34,21 +34,68 @@ pub use world::*;
 // but this does not get cleared. need a better strategy.
 // for now just reset it at end of test (when world is dropped?)
 lazy_static::lazy_static! {
-    static ref TYPE_MAP: Mutex<HashMap<TypeId, u64>> = {
+    static ref WORLD_INFOS: Mutex<HashMap<WorldKey, WorldInfoCache>> = {
         let m = HashMap::new();
 		Mutex::new(m)
     };
 }
 
+type WorldKey = u64;	//*mut ecs_world_t;
+
+struct WorldInfoCache
+{
+	component_typeid_map: HashMap<TypeId, u64>,
+}
+
+impl WorldInfoCache {
+	pub(crate) fn insert(world: *mut ecs_world_t) {
+		let cache = WorldInfoCache {
+			component_typeid_map: HashMap::new()
+		};
+
+		let world_key = Self::key_for_world(world);
+		let mut m = WORLD_INFOS.lock().unwrap();
+		m.insert(world_key, cache);
+	}
+
+	fn key_for_world(world: *mut ecs_world_t) -> u64 {
+		world as u64
+	}
+
+	pub fn component_id_for_type<T: Component>(world: *mut ecs_world_t) -> ecs_entity_t {
+		let world_key = Self::key_for_world(world);
+		let m = WORLD_INFOS.lock().unwrap();
+		let cache = m.get(&world_key).unwrap();	//.clone();	
+
+		// component MUST be registered ahead of time!
+		let type_id = TypeId::of::<T>();
+		let comp_id = cache.component_typeid_map.get(&type_id).unwrap().clone();	
+		comp_id
+	}
+
+	pub fn try_get_component_id_for_type<T: Component>(world: *mut ecs_world_t) -> Option<ecs_entity_t> {
+		let world_key = Self::key_for_world(world);
+		let m = WORLD_INFOS.lock().unwrap();
+		let cache = m.get(&world_key).unwrap();	//.clone();	
+
+		let type_id = TypeId::of::<T>();
+		let comp_id = cache.component_typeid_map.get(&type_id).map(|v| *v);	
+		comp_id
+	}
+
+	pub fn register_component_id_for_type_id(world: *mut ecs_world_t, comp_id: ecs_entity_t, type_id: TypeId) {
+		let world_key = Self::key_for_world(world);
+		let mut m = WORLD_INFOS.lock().unwrap();
+		let cache = m.get_mut(&world_key).unwrap();	//.clone();	
+
+		cache.component_typeid_map.insert(type_id, comp_id);
+	}
+}	
+
+
 pub trait Component : 'static { }
 impl<T> Component for T where T: 'static {}
 
-pub fn component_id_for_type<T: Component>() -> ecs_entity_t {
-	// component MUST be registered ahead of time!
-	let type_id = TypeId::of::<T>();
-	let comp_id = TYPE_MAP.lock().unwrap().get(&type_id).unwrap().clone();	
-	comp_id
-}
 
 
 #[cfg(test)]
@@ -69,6 +116,19 @@ mod tests {
 	}
 
 	struct Serializable {}
+
+    #[test]
+    fn flecs_multiple_worlds() {
+		// Component registrations are unique across worlds!
+		let mut world1 = World::new();
+		let pos1_e = world1.component::<Position>(None);
+		
+		let mut world2 = World::new();
+		world2.component::<Velocity>(None);		// insert another comp to steal 1st slot
+		let pos2_e = world2.component::<Position>(None);
+
+		assert_ne!(pos1_e, pos2_e);
+	}
 
     #[test]
     fn flecs_wrappers() {
