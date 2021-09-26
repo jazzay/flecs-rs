@@ -14,7 +14,7 @@ struct Velocity {
 
 // struct Serializable {}
 
-fn create_some_filters() {
+fn create_some_filters() -> World {
 	println!("Filter example starting...");
 
 	let mut world = World::new();
@@ -28,7 +28,10 @@ fn create_some_filters() {
 	let mut entity = world.entity();
 	entity.set(Position { x: 3.0, y: 9.0 });
 	entity.set(Velocity { x: 0.0, y: 10.0 });
+	world
+}
 
+fn tick(world: &mut World) {
 	let mut result = [ 0.0, 0.0 ];
 	let filter = Filter::new_2::<Position, Velocity>(world.raw());
 	filter.each(|pos: &Position, vel: &Velocity| {
@@ -40,7 +43,8 @@ fn create_some_filters() {
 }
 
 fn main() {
-	create_some_filters();
+	let mut world = create_some_filters();
+	tick(&mut world);
 }
 
 // We can also run these within tests. Need to figure out best org
@@ -49,7 +53,8 @@ fn main() {
 mod tests {
     #[test]
     fn flecs_filters() {
-		super::create_some_filters();
+		let w = super::create_some_filters();
+		tick(w);
 		//assert_eq!(result[0], 22.0);
 	}
 }
