@@ -21,13 +21,16 @@ fn create_some_filters() -> World {
 	world.component::<Position>(None);
 	world.component::<Velocity>(None);
 
-	let mut entity = world.entity();
-	entity.set(Position { x: 1.0, y: 2.0 });
-	entity.set(Velocity { x: 2.0, y: 4.0 });
+	world.entity_builder()
+		.set(Position { x: 1.0, y: 2.0 })
+		.set(Velocity { x: 2.0, y: 4.0 })
+		.build();
 
-	let mut entity = world.entity();
-	entity.set(Position { x: 3.0, y: 9.0 });
-	entity.set(Velocity { x: 0.0, y: 10.0 });
+	world.entity_builder()
+		.set(Position { x: 3.0, y: 9.0 })
+		.set(Velocity { x: 0.0, y: 10.0 })
+		.build();
+
 	world
 }
 
@@ -53,8 +56,8 @@ fn main() {
 mod tests {
     #[test]
     fn flecs_filters() {
-		let w = super::create_some_filters();
-		tick(w);
+		let mut world = super::create_some_filters();
+		super::tick(&mut world);
 		//assert_eq!(result[0], 22.0);
 	}
 }

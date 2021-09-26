@@ -9,7 +9,6 @@
 #![allow(deref_nullptr)]
 #![allow(improper_ctypes)]
 
-// use std::os::raw::c_char;
 use std::{any::TypeId, collections::HashMap, mem::{MaybeUninit}, sync::Mutex};
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
@@ -17,8 +16,14 @@ include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 mod component;
 use component::*;
 
+mod entity;
+use entity::*;
+
 pub mod filter;
 pub use filter::*;
+
+pub mod world;
+pub use world::*;
 
 // This is all WIP!
 //
@@ -45,129 +50,10 @@ pub fn component_id_for_type<T: Component>() -> ecs_entity_t {
 	comp_id
 }
 
-#[derive(PartialEq, Eq, Debug)]
-pub struct Entity {
-	entity: ecs_entity_t,
-	world: *mut ecs_world_t,
-}
-
-impl Entity {
-	pub fn new(entity: ecs_entity_t, world: *mut ecs_world_t) -> Self {
-		Self { entity, world }
-	}
-
-	pub fn name(&self) -> &str {
-		let char_ptr = unsafe { ecs_get_name(self.world, self.entity) };
-		let c_str = unsafe { std::ffi::CStr::from_ptr(char_ptr) };
-		let name = c_str.to_str().unwrap();
-		println!("name(): {}", name);
-		name
-	}
-
-	pub fn get<T: Component>(&self) -> &T {
-		let comp_id = component_id_for_type::<T>();
-		let value = unsafe { ecs_get_id(self.world, self.entity, comp_id) };
-		unsafe { (value as *const T).as_ref().unwrap() }
-	}
-
-    pub fn get_mut<T: Component>(&mut self/*bool *is_added = nullptr*/) -> &mut T  {	
-		let comp_id = component_id_for_type::<T>();
-		let mut is_added = false;
-		let value = unsafe { ecs_get_mut_w_entity(self.world, self.entity, comp_id, &mut is_added) };
-		unsafe { (value as *mut T).as_mut().unwrap() }
-    }
-
-	pub fn set<T: Component>(&mut self, value: T) -> &mut Self {
-		let dest = self.get_mut::<T>();
-		*dest = value;
-		self
-	}
-
-	pub fn add<T: Component>(&mut self) -> &mut Self {
-        // flecs_static_assert(is_flecs_constructible<T>::value,
-        //     "cannot default construct type: add T::T() or use emplace<T>()");
-		let comp_id = component_id_for_type::<T>();
-        unsafe { ecs_add_id(self.world, self.entity, comp_id) };
-		self
-	}
-}
-
-pub struct World {
-	world: *mut ecs_world_t,
-
-	// for now this is the simplest way to cache component IDs etc
-	// type_map: HashMap<TypeId, u64>,
-}
-
-impl World {
-	pub fn new() -> Self {
-		let world = unsafe { ecs_init() };
-		//init_builtin_components();
-		Self {
-			world,
-			// type_map: HashMap::new(),
-		}
-	}
-
-	pub fn raw(&self) -> *mut ecs_world_t {
-		self.world
-	}
-
-	pub fn entity(&mut self) -> Entity {
-		let entity = unsafe { ecs_new_id(self.world) };
-		Entity::new(entity, self.world)
-	}
-	
-    pub fn progress(&self, delta_time: f32) -> bool {
-        return unsafe { ecs_progress(self.world, delta_time) }
-    }	
-
-	pub fn lookup(name: &str) -> Option<Entity> {
-		None
-	}
-
-	pub fn id<T: Component>(&mut self) -> Option<Entity> {
-		let type_id = TypeId::of::<T>();
-
-		// see if we already cached it
-		if let Some(comp_id) = TYPE_MAP.lock().unwrap().get(&type_id) {
-			return Some(Entity::new(*comp_id, self.world));
-		}
-		None
-	}
-
-	pub fn component<T: 'static>(&mut self, name: Option<&str>) -> Entity {
-		let type_id = TypeId::of::<T>();
-
-		// see if we already cached it
-		if let Some(comp_id) = TYPE_MAP.lock().unwrap().get(&type_id) {
-			return Entity::new(*comp_id, self.world);
-		}
-
-		// let result: Entity = pod_component<T>(world, name);
-	
-		// if (_::cpp_type<T>::size()) {
-		// 	_::register_lifecycle_actions<T>(world, result);
-		// }
-		
-		let symbol = std::any::type_name::<T>();
-		let layout = std::alloc::Layout::new::<T>();
-		let comp_id = register_component(self.world, name, symbol, layout);
-		TYPE_MAP.lock().unwrap().insert(type_id, comp_id);
-		Entity::new(comp_id, self.world)
-	}	
-}
-
-impl Drop for World {
-	fn drop(&mut self) {
-		TYPE_MAP.lock().unwrap().clear();
-	}
-}
 
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use super::filter::*;
 	use std::alloc::Layout;
 
 	#[derive(Default, Debug, PartialEq)]
@@ -191,15 +77,16 @@ mod tests {
 		let vel_e = world.component::<Velocity>(None);
 		assert_ne!(pos_e, vel_e);
 
-		let mut entity = world.entity();
-		entity.set(Position { x: 1.0, y: 2.0 });
-		entity.set(Velocity { x: 2.0, y: 4.0 });
+		let entity = world.entity_builder()
+			.set(Position { x: 1.0, y: 2.0 })
+			.set(Velocity { x: 2.0, y: 4.0 })
+			.build();
 
 		// something broke here??
-		let pos = entity.get::<Position>();
+		let pos = world.get::<Position>(entity);
 		assert_eq!(pos, &Position { x: 1.0, y: 2.0 });
 
-		let vel = entity.get::<Velocity>();
+		let vel = world.get::<Velocity>(entity);
 		assert_eq!(vel, &Velocity { x: 2.0, y: 4.0 });
 	}
 
@@ -209,11 +96,11 @@ mod tests {
 		world.component::<Position>(Some("Position"));	// you can give a comp a name
 		world.component::<Serializable>(None);
 
-		let mut pos_e = world.id::<Position>().unwrap();
-		assert_eq!(pos_e.name(), "Position");
+		let pos_e = world.id::<Position>().unwrap();
+		assert_eq!(world.name(pos_e), "Position");
 		
 		// It's possible to add components like you would for any entity
-		pos_e.add::<Serializable>();	
+		world.add::<Serializable>(pos_e);	
 	}
 
     #[test]
