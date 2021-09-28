@@ -74,9 +74,12 @@ impl EntityRef {
 
 	pub fn name(&self) -> &str {
 		let char_ptr = unsafe { ecs_get_name(self.world, self.entity) };
+		if char_ptr.is_null() {
+			return "";
+		}
+
 		let c_str = unsafe { std::ffi::CStr::from_ptr(char_ptr) };
 		let name = c_str.to_str().unwrap();
-		println!("name(): {}", name);
 		name
 	}
 
@@ -85,4 +88,11 @@ impl EntityRef {
 		let value = unsafe { ecs_get_id(self.world, self.entity, comp_id) };
 		unsafe { (value as *const T).as_ref().unwrap() }
 	}
+}
+
+impl Default for ecs_entity_desc_t {
+    fn default() -> Self {
+		let desc: ecs_entity_desc_t = unsafe { MaybeUninit::zeroed().assume_init() };
+		desc
+    }
 }

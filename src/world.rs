@@ -91,6 +91,11 @@ impl World {
 		WorldInfoCache::register_component_id_for_type_id(self.world, comp_id, type_id);
 		Entity::new(comp_id)
 	}	
+
+	pub fn system(&mut self) -> SystemBuilder {
+		let system = SystemBuilder::new(self.world);
+		system
+	}
 }
 
 // Now that cache is world specific probably don't need this for now
