@@ -1,3 +1,5 @@
+use std::{ffi::c_void};
+
 use super::*;
 
 
@@ -105,7 +107,6 @@ impl SystemBuilder {
 		let name_c_str = std::ffi::CString::new(self.name_temp.as_str()).unwrap();
 		self.desc.entity.name = name_c_str.as_ptr() as *const i8;
 
-        // auto ctx = FLECS_NEW(Invoker)(std::forward<Func>(func));
         // entity_t e, kind = m_desc.entity.add[0];
         // bool is_trigger = kind == flecs::OnAdd || kind == flecs::OnRemove;
 
@@ -129,14 +130,14 @@ impl SystemBuilder {
 
             e = ecs_trigger_init(m_world, &desc);
         } else*/ {
-            let desc = self.desc;
+            //let desc = self.desc;
             // desc.callback = Some(Invoker::invoke);
             // desc.self = m_desc.self;
             // desc.query.filter.substitute_default = is_each;
             // desc.binding_ctx = ctx;
             // desc.binding_ctx_free = reinterpret_cast<ecs_ctx_free_t>(_::free_obj<Invoker>);
 
-			e = unsafe { ecs_system_init(self.world, &desc) };
+			e = unsafe { ecs_system_init(self.world, &self.desc) };
         }
 
         // if (this->m_desc.query.filter.terms_buffer) {
@@ -146,81 +147,67 @@ impl SystemBuilder {
         e
 	}
 
-	// inline system<Components ...> system_builder<Components...>::iter(Func&& func) const {
-	// 	using Invoker = typename _::iter_invoker<typename std::decay<Func>::type, Components...>;
-	// 	flecs::entity_t system = build<Invoker>(std::forward<Func>(func), false);
-	// 	return flecs::system<Components...>(m_world, system);
-	// }
-	
-	// inline system<Components ...> system_builder<Components...>::each(Func&& func) const {
-	// 	using Invoker = typename _::each_invoker<typename std::decay<Func>::type, Components...>;
-	// 	flecs::entity_t system = build<Invoker>(std::forward<Func>(func), true);
-	// 	return flecs::system<Components...>(m_world, system);
-	// }
-
 	// temp signature until I get component bundles working
-	pub fn iter<F: FnMut(&Iter)>(mut self, func: F) -> System {
-		extern "C" fn sys_callback(it: *mut ecs_iter_t) {
-			if it.is_null() {
-				return;
-			}
+	pub fn iter<F: FnMut(&Iter)>(mut self, mut func: F) -> System {
+		// we have to wrap the passed in function in a trampoline
+		// so that we can access it again within the C callback handler
+		let mut closure = |it: *mut ecs_iter_t| {
+			let iter = Iter { it };
+			func(&iter);
+		};
+		let trampoline = get_trampoline(&closure);
 
-			let it = unsafe { &*it };
+		self.desc.callback = Some(trampoline);
+		self = self.ctx(&mut closure as *mut _ as *mut c_void);
 
-			// let ctx = (*it).ctx;
-			// if ctx.is_null() {
-			// 	return;
-			// }
-			// let ctx: *mut Invoker = ctx as *mut Invoker;
-			// let invoker: Box<Invoker> = unsafe { Box::from_raw(ctx) };
-			// let iter = Iter { it };
-			// invoker.target(iter);	
-
-			let sys = EntityRef::new(it.system, it.world);
-			println!("sys_callback: {}", sys.name());
-
-			// func(Iter { it });		// can't get this to compile :(
-		}
-		// let ctx = Box::new(Invoker::new(cb));
-		// let ctx = Box::into_raw(ctx) as *mut ::std::os::raw::c_void;
-		// self = self.ctx(ctx);
-		self.desc.callback = Some(sys_callback);
 		let e = Self::build(&mut self);
 		System::new(self.world, e)
 	}
+
+	// each will be similar to above, but with different signature
+	// pub fn each<F: FnMut(&Iter)>(mut self, mut func: F) -> System {
+	// }
 }
 
 pub struct Iter {
 	it: *mut ecs_iter_t
 }
 
-/* so far this is not panning out
-struct Invoker<F> where F: FnMut(&Iter) {
-    pub target: F,
+struct SystemInvoker {
+	func: dyn FnMut(&Iter)
 }
 
-impl<F> Invoker<F> where F: FnMut(&Iter) {
-    fn new(target: F) -> Self {
-        Self { target }
-    }
-}
+pub type SystemCallback = unsafe extern "C" fn(*mut ecs_iter_t);
 
-extern "C" fn run_callback(it: *mut ecs_iter_t) {
-	unsafe {
-		if it.is_null() {
-			return;
-		}
-		let ctx = (*it).ctx;
-		if ctx.is_null() {
-			return;
-		}
-		let ctx: *mut Invoker = ctx as *mut Invoker;
-		let invoker: Box<Invoker> = unsafe { Box::from_raw(ctx) };
-		let iter = Iter { it };
-		invoker.target(iter);
+unsafe extern "C" fn trampoline<F>(it: *mut ecs_iter_t)
+where
+    F: FnMut(*mut ecs_iter_t),
+{
+	if it.is_null() {
+		return;
 	}
+
+	let ctx = (*it).ctx;
+	if ctx.is_null() {
+		return;
+	}
+
+	// For debugging
+	// let it_ref = &*it;
+	// let sys = EntityRef::new(it_ref.system, it_ref.world);
+	// println!("system-trampoline: {}", sys.name());
+
+	let user_data = (*it).ctx;
+    let func = &mut *(user_data as *mut F);
+    func(it);
 }
-*/
+
+pub fn get_trampoline<F>(_closure: &F) -> SystemCallback
+where
+    F: FnMut(*mut ecs_iter_t),
+{
+    trampoline::<F>
+}
 
 impl Default for ecs_system_desc_t {
     fn default() -> Self {
