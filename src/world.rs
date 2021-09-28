@@ -2,20 +2,21 @@ use crate::*;
 
 pub struct World {
 	world: *mut ecs_world_t,
-
-	// for now this is the simplest way to cache component IDs etc
-	// type_map: HashMap<TypeId, u64>,
 }
 
 impl World {
 	pub fn new() -> Self {
 		let world = unsafe { ecs_init() };
 		WorldInfoCache::insert(world);
-		
 		//init_builtin_components();
 		Self {
 			world,
-			// type_map: HashMap::new(),
+		}
+	}
+
+	pub(crate) fn new_from(world: *mut ecs_world_t) -> Self {
+		Self {
+			world,
 		}
 	}
 
@@ -72,7 +73,15 @@ impl World {
 		None
 	}
 
-	pub fn component<T: 'static>(&mut self, name: Option<&str>) -> Entity {
+	pub fn component<T: 'static>(&mut self) -> Entity {
+		Self::component_internal::<T>(self, None)
+	}
+
+	pub fn component_named<T: 'static>(&mut self, name: &str) -> Entity {
+		Self::component_internal::<T>(self, Some(name))
+	}
+
+	fn component_internal<T: 'static>(&mut self, name: Option<&str>) -> Entity {
 		// see if we already cached it
 		if let Some(comp_id) = WorldInfoCache::try_get_component_id_for_type::<T>(self.world) {
 			return Entity::new(comp_id);

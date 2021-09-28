@@ -53,7 +53,10 @@ impl System {
 pub struct SystemBuilder {
 	world: *mut ecs_world_t,
 	desc: ecs_system_desc_t,
-	name_temp: String,	// we have to keep it in memory until after build
+
+	// we need to keep these in memory until after build
+	name_temp: String,	
+	signature_temp: String,	
 }
 
 impl SystemBuilder {
@@ -69,7 +72,8 @@ impl SystemBuilder {
 		SystemBuilder {
 			world,
 			desc,
-			name_temp: "".to_owned()
+			name_temp: "".to_owned(),
+			signature_temp: "".to_owned(),
 		}
 	}
 
@@ -78,10 +82,10 @@ impl SystemBuilder {
 		self
     }
 
-    // fn signature(mut self, signature: &str) -> Self {
-    //     self.desc.query.filter.expr = signature;
-    //     self
-    // }
+    pub fn signature(mut self, signature: &str) -> Self {
+        self.signature_temp = signature.to_owned();
+        self
+    }
 
     pub fn interval(mut self, interval: f32) -> Self {
         self.desc.interval = interval;
@@ -106,6 +110,11 @@ impl SystemBuilder {
 
 		let name_c_str = std::ffi::CString::new(self.name_temp.as_str()).unwrap();
 		self.desc.entity.name = name_c_str.as_ptr() as *const i8;
+
+		let signature_c_str = std::ffi::CString::new(self.signature_temp.as_str()).unwrap();
+		if self.signature_temp.len() > 0 {
+			self.desc.query.filter.expr = signature_c_str.as_ptr() as *const i8;
+		}
 
         // entity_t e, kind = m_desc.entity.add[0];
         // bool is_trigger = kind == flecs::OnAdd || kind == flecs::OnRemove;
@@ -152,7 +161,7 @@ impl SystemBuilder {
 		// we have to wrap the passed in function in a trampoline
 		// so that we can access it again within the C callback handler
 		let mut closure = |it: *mut ecs_iter_t| {
-			let iter = Iter { it };
+			let iter = Iter::new(it);
 			func(&iter);
 		};
 		let trampoline = get_trampoline(&closure);
@@ -170,7 +179,72 @@ impl SystemBuilder {
 }
 
 pub struct Iter {
-	it: *mut ecs_iter_t
+	it: *mut ecs_iter_t,
+	begin: usize,
+	end: usize,
+}
+
+impl Iter {
+	fn new(it: *mut ecs_iter_t) -> Self {
+		Iter {
+			it,
+			begin: 0,
+			end: unsafe { (*it).count as usize }
+		}
+	}
+
+	pub fn world(&self) -> World {
+		World::new_from(unsafe { (*self.it).world })
+	}
+
+	pub fn count(&self) -> usize {
+		unsafe { (*self.it).count as usize }
+	}
+
+	pub fn delta_time(&self) -> f32 {
+		unsafe { (*self.it).delta_time }
+	}
+
+	pub fn delta_system_time(&self) -> f32 {
+		unsafe { (*self.it).delta_system_time }
+	}
+
+	pub fn world_time(&self) -> f32 {
+		unsafe { (*self.it).world_time }
+	}
+
+    pub fn term<A: Component>(&self, index: i32) -> Column<A> {
+        Self::get_term::<A>(self, index)
+    }
+
+    // template <typename T, typename A = actual_type_t<T>>
+    fn get_term<T: Component>(&self, index: i32) -> Column<T> {
+
+		/* TODO - validate that the types actually match!!!!
+#ifndef NDEBUG
+        ecs_entity_t term_id = ecs_term_id(m_iter, index);
+        ecs_assert(term_id & ECS_PAIR || term_id & ECS_SWITCH || 
+            term_id & ECS_CASE ||
+            term_id == _::cpp_type<T>::id(m_iter->world), 
+            ECS_COLUMN_TYPE_MISMATCH, NULL);
+#endif
+		*/
+
+        let mut count = self.count();
+        let is_shared = unsafe { !ecs_term_is_owned(self.it, index) };
+
+        /* If a shared column is retrieved with 'column', there will only be a
+         * single value. Ensure that the application does not accidentally read
+         * out of bounds. */
+        if is_shared {
+            count = 1;
+        }
+
+		let size = std::mem::size_of::<T>();
+		let array = unsafe { ecs_term_w_size(self.it, size as u64, index) as *mut T };
+        
+		Column::new(array, count, is_shared)
+    }
 }
 
 struct SystemInvoker {
@@ -214,4 +288,32 @@ impl Default for ecs_system_desc_t {
 		let desc: ecs_system_desc_t = unsafe { MaybeUninit::zeroed().assume_init() };
 		desc
     }
+}
+
+
+// Move to another file
+
+pub struct Column<T: Component> {
+    array: *mut T, 
+    count: usize,
+    is_shared: bool,
+}
+
+impl<T: Component> Column<T> {
+	pub(crate) fn new(array: *mut T, count: usize, is_shared: bool) -> Self {
+		Column {
+			array,
+			count,
+			is_shared,
+		}
+	}
+
+	pub fn get(&self, index: usize) -> &T {
+		assert!(index < self.count);
+		assert!(index == 0 || !self.is_shared);
+		unsafe {
+			let value = self.array.offset(index as isize);
+			value.as_ref().unwrap()
+		}
+	}
 }
