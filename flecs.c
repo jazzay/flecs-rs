@@ -26394,6 +26394,9 @@ ecs_entity_t ecs_run_intern(
     /* Prepare the query iterator */
     ecs_iter_t it = ecs_query_iter_page(system_data->query, offset, limit);
     it.world = stage->thread_ctx;
+	// JJ - hack fix real_world not being set inside system callbacks
+	//    we need that to key a lookup into component infos
+	it.real_world = world;
     it.system = system;
     it.self = system_data->self;
     it.delta_time = delta_time;
