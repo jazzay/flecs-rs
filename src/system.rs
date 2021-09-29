@@ -220,9 +220,15 @@ impl Iter {
     // template <typename T, typename A = actual_type_t<T>>
     fn get_term<T: Component>(&self, index: i32) -> Column<T> {
 
+		// validate that types match. could avoid this in Release builds perhaps to get max perf
+        let term_id = unsafe { ecs_term_id(self.it, index) };
+		let world = unsafe { (*self.it).real_world };	// must use real to get component infos
+		let comp_id = WorldInfoCache::component_id_for_type::<T>(world);
+		// println!("Term: {}, Comp: {}", term_id, comp_id);
+		assert!(term_id == comp_id);
+
 		/* TODO - validate that the types actually match!!!!
 #ifndef NDEBUG
-        ecs_entity_t term_id = ecs_term_id(m_iter, index);
         ecs_assert(term_id & ECS_PAIR || term_id & ECS_SWITCH || 
             term_id & ECS_CASE ||
             term_id == _::cpp_type<T>::id(m_iter->world), 

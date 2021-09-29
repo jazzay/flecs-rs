@@ -59,6 +59,7 @@ impl WorldInfoCache {
 		let world_key = Self::key_for_world(world);
 		let mut m = WORLD_INFOS.lock().unwrap();
 		m.insert(world_key, cache);
+		// println!("world {} added to cache", world_key);
 	}
 
 	fn key_for_world(world: *mut ecs_world_t) -> u64 {
@@ -67,12 +68,13 @@ impl WorldInfoCache {
 
 	pub fn component_id_for_type<T: Component>(world: *mut ecs_world_t) -> ecs_entity_t {
 		let world_key = Self::key_for_world(world);
-		let m = WORLD_INFOS.lock().unwrap();
-		let cache = m.get(&world_key).unwrap();	//.clone();	
+		// println!("world {} get from cache", world_key);
+		let m = WORLD_INFOS.lock().expect("Could not lock WORLD_INFOS");
+		let cache = m.get(&world_key).expect("Could not find WorldInfoCache");	//.clone();	
 
 		// component MUST be registered ahead of time!
 		let type_id = TypeId::of::<T>();
-		let comp_id = cache.component_typeid_map.get(&type_id).unwrap().clone();	
+		let comp_id = cache.component_typeid_map.get(&type_id).expect("Could not find comp_id for type_id").clone();	
 		comp_id
 	}
 
@@ -124,11 +126,11 @@ mod tests {
     fn flecs_multiple_worlds() {
 		// Component registrations are unique across worlds!
 		let mut world1 = World::new();
-		let pos1_e = world1.component::<Position>(None);
+		let pos1_e = world1.component::<Position>();
 		
 		let mut world2 = World::new();
-		world2.component::<Velocity>(None);		// insert another comp to steal 1st slot
-		let pos2_e = world2.component::<Position>(None);
+		world2.component::<Velocity>();		// insert another comp to steal 1st slot
+		let pos2_e = world2.component::<Position>();
 
 		assert_ne!(pos1_e, pos2_e);
 	}
@@ -136,8 +138,8 @@ mod tests {
     #[test]
     fn flecs_wrappers() {
 		let mut world = World::new();
-		let pos_e = world.component::<Position>(None);
-		let vel_e = world.component::<Velocity>(None);
+		let pos_e = world.component::<Position>();
+		let vel_e = world.component::<Velocity>();
 		assert_ne!(pos_e, vel_e);
 
 		let entity = world.entity_builder()
@@ -156,8 +158,8 @@ mod tests {
     #[test]
     fn flecs_components_are_entities() {
 		let mut world = World::new();
-		world.component::<Position>(Some("Position"));	// you can give a comp a name
-		world.component::<Serializable>(None);
+		world.component_named::<Position>("Position");	// you can give a comp a name
+		world.component::<Serializable>();
 
 		let pos_e = world.id::<Position>().unwrap();
 		assert_eq!(world.name(pos_e), "Position");

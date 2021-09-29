@@ -8,6 +8,7 @@ fn main() {
 
     // Tell cargo to invalidate the built crate whenever the header changes
     println!("cargo:rerun-if-changed=flecs.h");
+    println!("cargo:rerun-if-changed=flecs.cpp");
 
     // The bindgen::Builder is the main entry point
     // to bindgen, and lets you build up options for

@@ -41,8 +41,8 @@ fn main() {
 	let mut result = [0.0, 0.0];
 	for _ in 0..1000 {
 		let mut world = World::new();
-		world.component::<Position>(None);
-		world.component::<Velocity>(None);
+		world.component::<Position>();
+		world.component::<Velocity>();
 	
 		create_some_entities(&mut world, 100000);
 		result = tick(&mut world);
@@ -59,8 +59,8 @@ mod tests {
     #[test]
     fn flecs_filters() {
 		let mut world = World::new();
-		world.component::<Position>(None);
-		world.component::<Velocity>(None);
+		world.component::<Position>();
+		world.component::<Velocity>();
 	
 		create_some_entities(&mut world, 1000);
 		super::tick(&mut world);

@@ -32,9 +32,23 @@ impl World {
 	pub fn entity_builder(&mut self) -> EntityBuilder {
 		EntityBuilder::new(self.world)
 	}	
+
     pub fn progress(&self, delta_time: f32) -> bool {
-        return unsafe { ecs_progress(self.world, delta_time) }
+        unsafe { ecs_progress(self.world, delta_time) }
     }	
+
+    /** Signal application should quit.
+     * After calling this operation, the next call to progress() returns false.
+     */
+    pub fn quit(&self) {
+        unsafe { ecs_quit(self.world) }
+    }
+
+    /** Test if quit() has been called.
+     */
+    fn should_quit(&self) -> bool {
+        unsafe { ecs_should_quit(self.world) }
+    }
 
 	pub fn lookup(name: &str) -> Option<Entity> {
 		None
@@ -88,7 +102,6 @@ impl World {
 		}
 
 		// let result: Entity = pod_component<T>(world, name);
-	
 		// if (_::cpp_type<T>::size()) {
 		// 	_::register_lifecycle_actions<T>(world, result);
 		// }
@@ -107,9 +120,8 @@ impl World {
 	}
 }
 
-// Now that cache is world specific probably don't need this for now
-// impl Drop for World {
-// 	fn drop(&mut self) {
-// 		TYPE_MAP.lock().unwrap().clear();
-// 	}
-// }
+impl Drop for World {
+	fn drop(&mut self) {
+		unsafe { ecs_fini(self.world) };
+	}
+}
