@@ -1,15 +1,57 @@
+use std::alloc::Layout;
+
 use crate::*;
 
 // This is all WIP!
 
-// Will be useful later
-pub fn get_component_info(world: *mut ecs_world_t, comp_e: ecs_entity_t) {
-	// flecs stores info about components (size, etc) within the world
+// Notes:
+// I could leverage flecs aliasing to give engine/internal components public names.
+//		for example Position {} -> 'module.Position'
+//		then plugins could lookup/cache the runtime id via those names
+
+pub fn register_component_typed<T: 'static>(world: *mut ecs_world_t, name: Option<&str>) -> Entity {
+	// see if we already cached it
+	if let Some(comp_id) = WorldInfoCache::get_component_id_for_type::<T>(world) {
+		return Entity::new(comp_id);
+	}
+
+	// let result: Entity = pod_component<T>(world, name);
+	// if (_::cpp_type<T>::size()) {
+	// 	_::register_lifecycle_actions<T>(world, result);
+	// }
+	
+	let type_id = TypeId::of::<T>();
+	let symbol = std::any::type_name::<T>();
+	let layout = std::alloc::Layout::new::<T>();
+	let comp_id = register_component(world, name, symbol, layout);
+	WorldInfoCache::register_component_id_for_type_id(world, comp_id, type_id);
+	Entity::new(comp_id)
+}
+
+pub fn register_component_dynamic(world: *mut ecs_world_t, symbol: &'static str, name: Option<&str>, layout: Layout) -> Entity {
+	// see if we already cached it
+	if let Some(comp_info) = WorldInfoCache::get_component_id_for_symbol(world, symbol) {
+		return Entity::new(comp_info.id);
+	}
+	
+	let comp_id = register_component(world, name, symbol, layout);
+	WorldInfoCache::register_component_id_for_symbol(world, comp_id, symbol, layout.size());
+	Entity::new(comp_id)
+}
+
+// Looks up the EcsComponent data on a Component entity
+pub(crate) fn get_component_info(world: *mut ecs_world_t, comp_e: ecs_entity_t) -> Option<EcsComponent> {
+	// flecs stores info about components (size, align) within the world
 	// these are built-in components which we can acess via special component ids
 	let id = FLECS__EEcsComponent as u64;
 	let raw = unsafe { ecs_get_id(world, comp_e, id) };	
+	if raw.is_null() {
+		return None;
+	}
+
 	let c = unsafe { (raw as *const EcsComponent).as_ref().unwrap() };
-	println!("Component info for: {}, size: {}, align: {}", comp_e, c.size, c.alignment);
+	// println!("Got Component info for: {}, size: {}, align: {}", comp_e, c.size, c.alignment);
+	Some(c.clone())
 }
 
 pub fn register_component(world: *mut ecs_world_t, name: Option<&str>, symbol: &str, layout: std::alloc::Layout) -> ecs_entity_t {

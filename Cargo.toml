@@ -14,5 +14,13 @@ bindgen = "0.59.1"
 cc = "1.0.70"
 
 [[example]]
+name="dynamic_components"
+test = true
+
+[[example]]
 name="filters"
+test = true
+
+[[example]]
+name="systems"
 test = true

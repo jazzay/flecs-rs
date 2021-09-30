@@ -31,11 +31,14 @@ pub use world::*;
 // This is all WIP!
 //
 // TODOs:
-// - fix up string usage. rust -> C must null terminate!
+// - audit & fix up ALL string usages. rust -> C must null terminate!
+// - change all get<> component funcs to return Option<>
+// - validate that term components were named earlier in chain?
 
-// This is causing problems in tests, as new worlds are created
-// but this does not get cleared. need a better strategy.
-// for now just reset it at end of test (when world is dropped?)
+// TODO: make this better. 
+// 	possibly we could use world->set_context to hold our custom data container
+// 	associated to each world, then inside there cache the comp ids, etc
+// 	need to watch for mutable vs readonly worlds
 lazy_static::lazy_static! {
     static ref WORLD_INFOS: Mutex<HashMap<WorldKey, WorldInfoCache>> = {
         let m = HashMap::new();
@@ -45,15 +48,23 @@ lazy_static::lazy_static! {
 
 type WorldKey = u64;	//*mut ecs_world_t;
 
+#[derive(Copy, Clone, Debug)]
+struct ComponentInfo {
+	id: u64,
+	size: usize,
+}
+
 struct WorldInfoCache
 {
 	component_typeid_map: HashMap<TypeId, u64>,
+	component_symbol_map: HashMap<&'static str, ComponentInfo>,
 }
 
 impl WorldInfoCache {
 	pub(crate) fn insert(world: *mut ecs_world_t) {
 		let cache = WorldInfoCache {
-			component_typeid_map: HashMap::new()
+			component_typeid_map: HashMap::new(),
+			component_symbol_map: HashMap::new(),
 		};
 
 		let world_key = Self::key_for_world(world);
@@ -66,19 +77,7 @@ impl WorldInfoCache {
 		world as u64
 	}
 
-	pub fn component_id_for_type<T: Component>(world: *mut ecs_world_t) -> ecs_entity_t {
-		let world_key = Self::key_for_world(world);
-		// println!("world {} get from cache", world_key);
-		let m = WORLD_INFOS.lock().expect("Could not lock WORLD_INFOS");
-		let cache = m.get(&world_key).expect("Could not find WorldInfoCache");	//.clone();	
-
-		// component MUST be registered ahead of time!
-		let type_id = TypeId::of::<T>();
-		let comp_id = cache.component_typeid_map.get(&type_id).expect("Could not find comp_id for type_id").clone();	
-		comp_id
-	}
-
-	pub fn try_get_component_id_for_type<T: Component>(world: *mut ecs_world_t) -> Option<ecs_entity_t> {
+	pub fn get_component_id_for_type<T: Component>(world: *mut ecs_world_t) -> Option<ecs_entity_t> {
 		let world_key = Self::key_for_world(world);
 		let m = WORLD_INFOS.lock().unwrap();
 		let cache = m.get(&world_key).unwrap();	//.clone();	
@@ -95,6 +94,20 @@ impl WorldInfoCache {
 
 		cache.component_typeid_map.insert(type_id, comp_id);
 	}
+
+	pub fn get_component_id_for_symbol(world: *mut ecs_world_t, symbol: &'static str) -> Option<ComponentInfo> {
+		let world_key = Self::key_for_world(world);
+		let m = WORLD_INFOS.lock().unwrap();
+		let cache = m.get(&world_key).unwrap();
+		cache.component_symbol_map.get(symbol).map(|v| *v)
+	}
+
+	pub fn register_component_id_for_symbol(world: *mut ecs_world_t, comp_id: ecs_entity_t, symbol: &'static str, size: usize) {
+		let world_key = Self::key_for_world(world);
+		let mut m = WORLD_INFOS.lock().unwrap();
+		let cache = m.get_mut(&world_key).unwrap();
+		cache.component_symbol_map.insert(symbol, ComponentInfo { id: comp_id, size });
+	}	
 }	
 
 

@@ -219,11 +219,10 @@ impl Iter {
 
     // template <typename T, typename A = actual_type_t<T>>
     fn get_term<T: Component>(&self, index: i32) -> Column<T> {
-
 		// validate that types match. could avoid this in Release builds perhaps to get max perf
         let term_id = unsafe { ecs_term_id(self.it, index) };
 		let world = unsafe { (*self.it).real_world };	// must use real to get component infos
-		let comp_id = WorldInfoCache::component_id_for_type::<T>(world);
+		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(world).expect("Component type not registered!");
 		// println!("Term: {}, Comp: {}", term_id, comp_id);
 		assert!(term_id == comp_id);
 
@@ -251,6 +250,26 @@ impl Iter {
         
 		Column::new(array, count, is_shared)
     }
+
+    pub fn get_term_dynamic(&self, index: i32) -> ColumnDynamic {
+        let mut count = self.count();
+        let is_shared = unsafe { !ecs_term_is_owned(self.it, index) };
+        if is_shared {
+            count = 1;
+        }
+
+		// TODO: look this up within the component info
+		let world = unsafe { (*self.it).real_world };
+        let term_id = unsafe { ecs_term_id(self.it, index) };
+		
+		let mut size = 0;	// we only get a size if there is a component?
+		if let Some(info) = get_component_info(world, term_id) {
+			size = info.size;
+		}
+
+		let array = unsafe { ecs_term_w_size(self.it, size as u64, index) as *mut u8 };
+		ColumnDynamic::new(array, count, size as usize, is_shared)
+    }	
 }
 
 struct SystemInvoker {
@@ -320,6 +339,34 @@ impl<T: Component> Column<T> {
 		unsafe {
 			let value = self.array.offset(index as isize);
 			value.as_ref().unwrap()
+		}
+	}
+}
+
+pub struct ColumnDynamic {
+    array: *mut u8, 
+    count: usize,
+    element_size: usize,
+    is_shared: bool,
+}
+
+impl ColumnDynamic {
+	pub(crate) fn new(array: *mut u8, count: usize, element_size: usize, is_shared: bool) -> Self {
+		ColumnDynamic {
+			array,
+			count,
+			element_size,
+			is_shared,
+		}
+	}
+
+	pub fn get(&self, index: usize) -> &[u8] {
+		assert!(index < self.count);
+		assert!(index == 0 || !self.is_shared);
+		unsafe {
+			let ptr = self.array.offset(index as isize);
+			let len = self.element_size;
+			std::slice::from_raw_parts_mut(ptr, len)
 		}
 	}
 }

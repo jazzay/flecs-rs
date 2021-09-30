@@ -35,7 +35,7 @@ impl EntityBuilder {
 
 	// private helper
     fn get_mut<T: Component>(&mut self) -> &mut T  {
-		let comp_id = WorldInfoCache::component_id_for_type::<T>(self.world);
+		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
 		let mut is_added = false;
 		let value = unsafe { ecs_get_mut_w_entity(self.world, self.entity, comp_id, &mut is_added) };
 		unsafe { (value as *mut T).as_mut().unwrap() }
@@ -50,8 +50,32 @@ impl EntityBuilder {
 	pub fn add<T: Component>(self) -> Self {
         // flecs_static_assert(is_flecs_constructible<T>::value,
         //     "cannot default construct type: add T::T() or use emplace<T>()");
-		let comp_id = WorldInfoCache::component_id_for_type::<T>(self.world);
+		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
         unsafe { ecs_add_id(self.world, self.entity, comp_id) };
+		self
+	}
+
+    fn get_mut_dynamic(&mut self, symbol: &'static str) -> &mut [u8]  {
+		let comp_info = WorldInfoCache::get_component_id_for_symbol(self.world, symbol).unwrap();
+		let mut is_added = false;
+		let value = unsafe { ecs_get_mut_w_entity(self.world, self.entity, comp_info.id, &mut is_added) };
+		unsafe { 
+			let ptr = value as *mut u8;
+			let len = comp_info.size;
+			let s = std::slice::from_raw_parts_mut(ptr, len);
+			s
+		}
+    }
+
+	pub fn set_dynamic(mut self, symbol: &'static str, src: &[u8]) -> Self {
+		let dest = self.get_mut_dynamic(symbol);
+		dest.copy_from_slice(src);
+		self
+	}
+
+	pub fn add_dynamic(self, symbol: &'static str) -> Self {
+		let comp_info = WorldInfoCache::get_component_id_for_symbol(self.world, symbol).unwrap();
+        unsafe { ecs_add_id(self.world, self.entity, comp_info.id) };
 		self
 	}
 
@@ -84,7 +108,7 @@ impl EntityRef {
 	}
 
 	pub fn get<T: Component>(&self) -> &T {
-		let comp_id = WorldInfoCache::component_id_for_type::<T>(self.world);
+		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
 		let value = unsafe { ecs_get_id(self.world, self.entity, comp_id) };
 		unsafe { (value as *const T).as_ref().unwrap() }
 	}

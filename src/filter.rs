@@ -18,8 +18,8 @@ impl Filter {
 		let mut desc: ecs_filter_desc_t = unsafe { MaybeUninit::zeroed().assume_init() };
 
 		// TODO: add batch type lookup!
-		desc.terms[0].id = WorldInfoCache::component_id_for_type::<A>(world);
-		desc.terms[1].id = WorldInfoCache::component_id_for_type::<B>(world);
+		desc.terms[0].id = WorldInfoCache::get_component_id_for_type::<A>(world).expect("Component type not registered!");
+		desc.terms[1].id = WorldInfoCache::get_component_id_for_type::<B>(world).expect("Component type not registered!");
 
 		let filter: ecs_filter_t = unsafe { MaybeUninit::zeroed().assume_init() };
 		let mut filter = Box::new(filter);

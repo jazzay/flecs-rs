@@ -1,3 +1,5 @@
+use std::alloc::Layout;
+
 use crate::*;
 
 pub struct World {
@@ -62,8 +64,9 @@ impl World {
 		name
 	}
 
+	// TODO: should we make this return an option over panicing?
 	pub fn get<T: Component>(&self, entity: Entity) -> &T {
-		let comp_id = WorldInfoCache::component_id_for_type::<T>(self.world);
+		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
 		let value = unsafe { ecs_get_id(self.world, entity.raw(), comp_id) };
 		unsafe { (value as *const T).as_ref().unwrap() }
 	}
@@ -71,7 +74,7 @@ impl World {
 	pub fn add<T: Component>(self, entity: Entity) -> Self {
         // flecs_static_assert(is_flecs_constructible<T>::value,
         //     "cannot default construct type: add T::T() or use emplace<T>()");
-		let comp_id = WorldInfoCache::component_id_for_type::<T>(self.world);
+		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
         unsafe { ecs_add_id(self.world, entity.raw(), comp_id) };
 		self
 	}
@@ -80,39 +83,27 @@ impl World {
 		let type_id = TypeId::of::<T>();
 
 		// see if we already cached it
-		let comp_id = WorldInfoCache::try_get_component_id_for_type::<T>(self.world);
-		if let Some(comp_id) = comp_id {
+		if let Some(comp_id) = WorldInfoCache::get_component_id_for_type::<T>(self.world) {
 			return Some(Entity::new(comp_id));
 		}
 		None
 	}
 
 	pub fn component<T: 'static>(&mut self) -> Entity {
-		Self::component_internal::<T>(self, None)
+		register_component_typed::<T>(self.world, None)
 	}
 
 	pub fn component_named<T: 'static>(&mut self, name: &str) -> Entity {
-		Self::component_internal::<T>(self, Some(name))
+		register_component_typed::<T>(self.world, Some(name))
 	}
 
-	fn component_internal<T: 'static>(&mut self, name: Option<&str>) -> Entity {
-		// see if we already cached it
-		if let Some(comp_id) = WorldInfoCache::try_get_component_id_for_type::<T>(self.world) {
-			return Entity::new(comp_id);
-		}
+	pub fn component_dynamic(&mut self, symbol: &'static str, layout: Layout) -> Entity {
+		register_component_dynamic(self.world, symbol, None, layout)
+	}
 
-		// let result: Entity = pod_component<T>(world, name);
-		// if (_::cpp_type<T>::size()) {
-		// 	_::register_lifecycle_actions<T>(world, result);
-		// }
-		
-		let type_id = TypeId::of::<T>();
-		let symbol = std::any::type_name::<T>();
-		let layout = std::alloc::Layout::new::<T>();
-		let comp_id = register_component(self.world, name, symbol, layout);
-		WorldInfoCache::register_component_id_for_type_id(self.world, comp_id, type_id);
-		Entity::new(comp_id)
-	}	
+	pub fn component_dynamic_named(&mut self, symbol: &'static str, name: &str, layout: Layout) -> Entity {
+		register_component_dynamic(self.world, symbol, Some(name), layout)
+	}
 
 	pub fn system(&mut self) -> SystemBuilder {
 		let system = SystemBuilder::new(self.world);
