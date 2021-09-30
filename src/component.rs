@@ -9,7 +9,7 @@ use crate::*;
 //		for example Position {} -> 'module.Position'
 //		then plugins could lookup/cache the runtime id via those names
 
-pub fn register_component_typed<T: 'static>(world: *mut ecs_world_t, name: Option<&str>) -> Entity {
+pub fn register_component_typed<T: 'static>(world: *mut ecs_world_t, name: Option<&'static str>) -> Entity {
 	// see if we already cached it
 	if let Some(comp_id) = WorldInfoCache::get_component_id_for_type::<T>(world) {
 		return Entity::new(comp_id);
@@ -23,18 +23,32 @@ pub fn register_component_typed<T: 'static>(world: *mut ecs_world_t, name: Optio
 	let type_id = TypeId::of::<T>();
 	let symbol = std::any::type_name::<T>();
 	let layout = std::alloc::Layout::new::<T>();
-	let comp_id = register_component(world, name, symbol, layout);
+	let comp_id = register_component(world, 
+		ComponentDescriptor { 
+			symbol, 
+			name, 
+			custom_id: None,
+			layout 
+	});
+
 	WorldInfoCache::register_component_id_for_type_id(world, comp_id, type_id);
 	Entity::new(comp_id)
 }
 
-pub fn register_component_dynamic(world: *mut ecs_world_t, symbol: &'static str, name: Option<&str>, layout: Layout) -> Entity {
+pub fn register_component_dynamic(world: *mut ecs_world_t, symbol: &'static str, name: Option<&'static str>, layout: Layout) -> Entity {
 	// see if we already cached it
 	if let Some(comp_info) = WorldInfoCache::get_component_id_for_symbol(world, symbol) {
 		return Entity::new(comp_info.id);
 	}
 	
-	let comp_id = register_component(world, name, symbol, layout);
+	let comp_id = register_component(world, 
+		ComponentDescriptor { 
+			symbol, 
+			name, 
+			custom_id: None,
+			layout 
+	});
+
 	WorldInfoCache::register_component_id_for_symbol(world, comp_id, symbol, layout.size());
 	Entity::new(comp_id)
 }
@@ -54,8 +68,16 @@ pub(crate) fn get_component_info(world: *mut ecs_world_t, comp_e: ecs_entity_t) 
 	Some(c.clone())
 }
 
-pub fn register_component(world: *mut ecs_world_t, name: Option<&str>, symbol: &str, layout: std::alloc::Layout) -> ecs_entity_t {
-	// println!("register_component - name: {:?}, symbol: {}, {:?}", name, symbol, layout);
+#[derive(Debug)]
+pub struct ComponentDescriptor {
+	pub symbol: &'static str, 
+	pub name: Option<&'static str>, 
+	pub custom_id: Option<u64>,
+	pub layout: std::alloc::Layout
+}
+
+pub fn register_component(world: *mut ecs_world_t, desc: ComponentDescriptor) -> ecs_entity_t {
+	println!("register_component - {:?}", desc);
 
 	// How C code registers a component
 	//ECS_COMPONENT(world, Position);
@@ -85,13 +107,17 @@ pub fn register_component(world: *mut ecs_world_t, name: Option<&str>, symbol: &
 
 	let mut e_desc: ecs_entity_desc_t = unsafe { MaybeUninit::zeroed().assume_init() };
 
-	let name_c_str = std::ffi::CString::new(name.unwrap_or("")).unwrap();
-	let symbol_c_str = std::ffi::CString::new(symbol).unwrap();
+	let name_c_str = std::ffi::CString::new(desc.name.unwrap_or("")).unwrap();
+	let symbol_c_str = std::ffi::CString::new(desc.symbol).unwrap();
 
 	// could be a const
 	let sep = std::ffi::CString::new("::").unwrap();
 
-	e_desc.entity = 0;	// undefined, so create new
+	if let Some(custom_id) = desc.custom_id {
+		e_desc.entity = custom_id;
+	} else {
+		e_desc.entity = 0;	// undefined, so create new
+	}
 
 	// For now these are the same as the T::name is passed in
 	e_desc.name = name_c_str.as_ptr() as *const i8;
@@ -126,15 +152,17 @@ pub fn register_component(world: *mut ecs_world_t, name: Option<&str>, symbol: &
 	// 		desc.size = cpp_type_size<T>::size(allow_tag),
 	// 		desc.alignment = cpp_type_size<T>::alignment(allow_tag),
 	// 	},
-		size: layout.size() as u64,
-		alignment: layout.align() as u64,
+		size: desc.layout.size() as u64,
+		alignment: desc.layout.align() as u64,
 	};
-
-	// ecs_entity_t entity = ecs_component_init(world, &desc);
-
 
 	let comp_entity = unsafe { ecs_component_init(world, &comp_desc) };
 	// println!("register_component - comp_entity {}", comp_entity);
+
+	if let Some(custom_id) = desc.custom_id {
+		assert!(comp_entity == custom_id);
+	}
+
 	comp_entity
 }
 

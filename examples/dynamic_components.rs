@@ -51,6 +51,5 @@ fn main() {
 mod tests {
     #[test]
     fn flecs_dynamic_components() {
-		todo!();
 	}
 }

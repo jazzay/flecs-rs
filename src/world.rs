@@ -93,7 +93,7 @@ impl World {
 		register_component_typed::<T>(self.world, None)
 	}
 
-	pub fn component_named<T: 'static>(&mut self, name: &str) -> Entity {
+	pub fn component_named<T: 'static>(&mut self, name: &'static str) -> Entity {
 		register_component_typed::<T>(self.world, Some(name))
 	}
 
@@ -101,7 +101,7 @@ impl World {
 		register_component_dynamic(self.world, symbol, None, layout)
 	}
 
-	pub fn component_dynamic_named(&mut self, symbol: &'static str, name: &str, layout: Layout) -> Entity {
+	pub fn component_dynamic_named(&mut self, symbol: &'static str, name: &'static str, layout: Layout) -> Entity {
 		register_component_dynamic(self.world, symbol, Some(name), layout)
 	}
 

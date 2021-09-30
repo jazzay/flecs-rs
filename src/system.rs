@@ -360,6 +360,8 @@ impl ColumnDynamic {
 		}
 	}
 
+	pub fn element_size(&self) -> usize { self.element_size }
+
 	pub fn get(&self, index: usize) -> &[u8] {
 		assert!(index < self.count);
 		assert!(index == 0 || !self.is_shared);

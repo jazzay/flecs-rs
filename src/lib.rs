@@ -14,10 +14,10 @@ use std::{any::TypeId, collections::HashMap, mem::{MaybeUninit}, sync::Mutex};
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
 mod component;
-use component::*;
+pub use component::*;
 
 mod entity;
-use entity::*;
+pub use entity::*;
 
 pub mod filter;
 pub use filter::*;
@@ -189,7 +189,12 @@ mod tests {
 		let is_alive = unsafe { ecs_is_alive(world, entity) };
 		assert_eq!(is_alive, true);
 
-		let component = register_component(world, Some("A"), "flecs::tests::A", Layout::from_size_align(16, 4).unwrap());
+		let component = register_component(world, ComponentDescriptor {
+			symbol: "flecs::tests::A", 
+			name: Some("A"), 
+			custom_id: None,
+			layout: Layout::from_size_align(16, 4).unwrap()
+		});
 
 		let entity = unsafe { ecs_set_id(
 			world,
