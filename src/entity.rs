@@ -14,6 +14,11 @@ impl Entity {
 	pub(crate) fn raw(&self) -> ecs_entity_t { self.entity }
 }
 
+impl From<u64> for Entity {
+    fn from(v: u64) -> Self {
+        Entity::new(v)
+    }
+}
 
 // explore using the builder pattern to construct Entities with components
 //
@@ -33,8 +38,27 @@ impl EntityBuilder {
 		self
 	}
 
-	// private helper
-    fn get_mut<T: Component>(&mut self) -> &mut T  {
+	pub fn add_component(self, component: Entity) -> Self {
+        unsafe { ecs_add_id(self.world, self.entity, component.raw()) };
+		self
+	}
+
+	pub fn set_component(self, comp: Entity, src: &[u8]) -> Self {
+		let info = get_component_info(self.world, comp.raw()).expect("Component type not registered!");
+		let mut is_added = false;
+		let dest = unsafe { 
+			let ptr = ecs_get_mut_w_entity(self.world, self.entity, comp.raw(), &mut is_added) as *mut u8;
+			std::slice::from_raw_parts_mut(ptr, info.size as usize)
+		};
+
+		assert!(src.len() == info.size as usize);
+		dest.copy_from_slice(src);
+		self
+	}
+
+	// Typed Component accessors
+	//
+    pub fn get_mut<T: Component>(&mut self) -> &mut T  {
 		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
 		let mut is_added = false;
 		let value = unsafe { ecs_get_mut_w_entity(self.world, self.entity, comp_id, &mut is_added) };
@@ -55,6 +79,8 @@ impl EntityBuilder {
 		self
 	}
 
+	// Dynamic Component accessors
+	//
     fn get_mut_dynamic(&mut self, symbol: &'static str) -> &mut [u8]  {
 		let comp_info = WorldInfoCache::get_component_id_for_symbol(self.world, symbol).unwrap();
 		let mut is_added = false;
@@ -79,6 +105,8 @@ impl EntityBuilder {
 		self
 	}
 
+	// Completing the build
+	//
 	pub fn build(self) -> Entity {
 		Entity::new(self.entity)
 	}
@@ -105,6 +133,17 @@ impl EntityRef {
 		let c_str = unsafe { std::ffi::CStr::from_ptr(char_ptr) };
 		let name = c_str.to_str().unwrap();
 		name
+	}
+
+	pub fn get_component(&self, comp: Entity) -> &[u8] {
+		let info = get_component_info(self.world, comp.raw()).expect("Component type not registered!");
+		let src = unsafe { 
+			let ptr = ecs_get_w_entity(self.world, self.entity, comp.raw()) as *const u8;
+			std::slice::from_raw_parts(ptr, info.size as usize)
+		};
+
+		assert!(src.len() == info.size as usize);
+		src
 	}
 
 	pub fn get<T: Component>(&self) -> &T {
