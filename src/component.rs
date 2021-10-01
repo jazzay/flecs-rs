@@ -77,7 +77,7 @@ pub struct ComponentDescriptor {
 }
 
 pub fn register_component(world: *mut ecs_world_t, desc: ComponentDescriptor) -> ecs_entity_t {
-	println!("register_component - {:?}", desc);
+	// println!("register_component - {:?}", desc);
 
 	// How C code registers a component
 	//ECS_COMPONENT(world, Position);
