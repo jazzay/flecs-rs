@@ -56,6 +56,18 @@ impl EntityBuilder {
 		self
 	}
 
+	pub fn write_component<F: FnMut(&mut [u8])>(self, comp: Entity, mut writer: F) -> Self {
+		let info = get_component_info(self.world, comp.raw()).expect("Component type not registered!");
+		let mut is_added = false;
+		let dest = unsafe { 
+			let ptr = ecs_get_mut_w_entity(self.world, self.entity, comp.raw(), &mut is_added) as *mut u8;
+			std::slice::from_raw_parts_mut(ptr, info.size as usize)
+		};
+
+		writer(dest);
+		self
+	}
+
 	// Typed Component accessors
 	//
     pub fn get_mut<T: Component>(&mut self) -> &mut T  {

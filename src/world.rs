@@ -79,6 +79,15 @@ impl World {
 		self
 	}
 
+	pub fn set<T: Component>(self, entity: Entity, value: T) -> Self {
+		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
+		let mut is_added = false;
+		let dest = unsafe { ecs_get_mut_w_entity(self.world, entity.raw(), comp_id, &mut is_added) } ;
+		let dest = unsafe { (dest as *mut T).as_mut().unwrap() };
+		*dest = value;
+		self
+	}
+
 	pub fn id<T: Component>(&mut self) -> Option<Entity> {
 		let type_id = TypeId::of::<T>();
 
