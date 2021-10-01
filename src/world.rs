@@ -65,27 +65,39 @@ impl World {
 	}
 
 	// TODO: should we make this return an option over panicing?
-	pub fn get<T: Component>(&self, entity: Entity) -> &T {
+	pub fn get<'a, T: Component>(&'a self, entity: Entity) -> Option<&'a T> {
 		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
 		let value = unsafe { ecs_get_id(self.world, entity.raw(), comp_id) };
-		unsafe { (value as *const T).as_ref().unwrap() }
+		if value.is_null() {
+			return None;
+		}
+		Some(unsafe { (value as *const T).as_ref().unwrap() })
 	}
 
-	pub fn add<T: Component>(self, entity: Entity) -> Self {
+	pub fn add<T: Component>(&self, entity: Entity) {
         // flecs_static_assert(is_flecs_constructible<T>::value,
         //     "cannot default construct type: add T::T() or use emplace<T>()");
 		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
         unsafe { ecs_add_id(self.world, entity.raw(), comp_id) };
-		self
 	}
 
-	pub fn set<T: Component>(self, entity: Entity, value: T) -> Self {
+	pub fn set<T: Component>(&self, entity: Entity, value: T) {
 		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
 		let mut is_added = false;
 		let dest = unsafe { ecs_get_mut_w_entity(self.world, entity.raw(), comp_id, &mut is_added) } ;
 		let dest = unsafe { (dest as *mut T).as_mut().unwrap() };
 		*dest = value;
-		self
+	}
+
+	pub fn write_component<F: FnMut(&mut [u8])>(&self, entity: Entity, comp: Entity, mut writer: F) {
+		let info = get_component_info(self.world, comp.raw()).expect("Component type not registered!");
+		let mut is_added = false;
+		let dest = unsafe { 
+			let ptr = ecs_get_mut_w_entity(self.world, entity.raw(), comp.raw(), &mut is_added) as *mut u8;
+			std::slice::from_raw_parts_mut(ptr, info.size as usize)
+		};
+
+		writer(dest);
 	}
 
 	pub fn id<T: Component>(&mut self) -> Option<Entity> {
