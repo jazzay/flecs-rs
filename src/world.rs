@@ -26,7 +26,7 @@ impl World {
 		self.world
 	}
 
-	pub fn entity(&mut self) -> Entity {
+	pub fn entity(&self) -> Entity {
 		let entity = unsafe { ecs_new_id(self.world) };
 		Entity::new(entity)
 	}
@@ -87,6 +87,20 @@ impl World {
 		let dest = unsafe { ecs_get_mut_w_entity(self.world, entity.raw(), comp_id, &mut is_added) } ;
 		let dest = unsafe { (dest as *mut T).as_mut().unwrap() };
 		*dest = value;
+	}
+
+	pub fn read_component(&self, entity: Entity, comp: Entity) -> Option<&[u8]> {
+		let info = get_component_info(self.world, comp.raw()).expect("Component type not registered!");
+		let src = unsafe { 
+			let ptr = ecs_get_w_entity(self.world, entity.raw(), comp.raw()) as *const u8;
+			if ptr.is_null() {
+				return None;
+			}
+			std::slice::from_raw_parts(ptr, info.size as usize)
+		};
+
+		assert!(src.len() == info.size as usize);
+		Some(src)
 	}
 
 	pub fn write_component<F: FnMut(&mut [u8])>(&self, entity: Entity, comp: Entity, mut writer: F) {

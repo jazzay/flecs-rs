@@ -161,10 +161,10 @@ mod tests {
 			.build();
 
 		// something broke here??
-		let pos = world.get::<Position>(entity);
+		let pos = world.get::<Position>(entity).unwrap();
 		assert_eq!(pos, &Position { x: 1.0, y: 2.0 });
 
-		let vel = world.get::<Velocity>(entity);
+		let vel = world.get::<Velocity>(entity).unwrap();
 		assert_eq!(vel, &Velocity { x: 2.0, y: 4.0 });
 	}
 
@@ -190,8 +190,8 @@ mod tests {
 		assert_eq!(is_alive, true);
 
 		let component = register_component(world, ComponentDescriptor {
-			symbol: "flecs::tests::A", 
-			name: Some("A"), 
+			symbol: "flecs::tests::A".to_owned(), 
+			name: "A".to_owned(), 
 			custom_id: None,
 			layout: Layout::from_size_align(16, 4).unwrap()
 		});

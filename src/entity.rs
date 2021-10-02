@@ -20,6 +20,12 @@ impl From<u64> for Entity {
     }
 }
 
+impl From<Entity> for u64 {
+    fn from(e: Entity) -> Self {
+        e.raw()
+    }
+}
+
 // explore using the builder pattern to construct Entities with components
 //
 pub struct EntityBuilder {

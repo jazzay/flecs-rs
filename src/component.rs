@@ -25,8 +25,8 @@ pub fn register_component_typed<T: 'static>(world: *mut ecs_world_t, name: Optio
 	let layout = std::alloc::Layout::new::<T>();
 	let comp_id = register_component(world, 
 		ComponentDescriptor { 
-			symbol, 
-			name, 
+			symbol: symbol.to_owned(), 
+			name: name.unwrap_or("").to_owned(), 
 			custom_id: None,
 			layout 
 	});
@@ -43,8 +43,8 @@ pub fn register_component_dynamic(world: *mut ecs_world_t, symbol: &'static str,
 	
 	let comp_id = register_component(world, 
 		ComponentDescriptor { 
-			symbol, 
-			name, 
+			symbol: symbol.to_owned(), 
+			name: name.unwrap_or("").to_owned(), 
 			custom_id: None,
 			layout 
 	});
@@ -70,8 +70,8 @@ pub(crate) fn get_component_info(world: *mut ecs_world_t, comp_e: ecs_entity_t) 
 
 #[derive(Debug)]
 pub struct ComponentDescriptor {
-	pub symbol: &'static str, 
-	pub name: Option<&'static str>, 
+	pub symbol: String, 
+	pub name: String, 
 	pub custom_id: Option<u64>,
 	pub layout: std::alloc::Layout
 }
@@ -107,7 +107,7 @@ pub fn register_component(world: *mut ecs_world_t, desc: ComponentDescriptor) ->
 
 	let mut e_desc: ecs_entity_desc_t = unsafe { MaybeUninit::zeroed().assume_init() };
 
-	let name_c_str = std::ffi::CString::new(desc.name.unwrap_or("")).unwrap();
+	let name_c_str = std::ffi::CString::new(desc.name).unwrap();
 	let symbol_c_str = std::ffi::CString::new(desc.symbol).unwrap();
 
 	// could be a const
