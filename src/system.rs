@@ -197,6 +197,10 @@ impl Iter {
 		World::new_from(unsafe { (*self.it).world })
 	}
 
+	pub fn ctx(&self) -> *mut ::std::os::raw::c_void {
+		unsafe { (*self.it).ctx }
+	}
+
 	pub fn count(&self) -> usize {
 		unsafe { (*self.it).count as usize }
 	}

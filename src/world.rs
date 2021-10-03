@@ -64,6 +64,44 @@ impl World {
 		name
 	}
 
+	/// Set a singleton component
+	pub fn set_singleton<T: Component>(&mut self, value: T) {
+		// insert the singleton type automatically if necessary
+		if self.id::<T>().is_none() {
+			self.component::<T>();
+		}
+
+		let comp_id = self.id::<T>().unwrap();
+		let entity = comp_id.clone();	// entity = the component for singleton
+		self.set(entity, value);
+	}
+
+	/// Get a singleton component mutably
+	pub fn get_singleton_mut<'a, T: Component>(&'a mut self, entity: Entity) -> Option<&'a mut T> {
+		// insert the singleton type automatically if necessary
+		if self.id::<T>().is_none() {
+			self.component::<T>();
+		}
+
+		let comp_id = self.id::<T>().unwrap();
+		let entity = comp_id.clone();	// entity = the component for singleton
+
+		let mut is_added = false;
+		let dest = unsafe { ecs_get_mut_w_entity(self.world, entity.raw(), comp_id.raw(), &mut is_added) } ;
+
+		if dest.is_null() {
+			return None;
+		}
+		Some(unsafe { (dest as *mut T).as_mut().unwrap() })
+	}
+	
+	/// Get a singleton component 
+	pub fn get_singleton<'a, T: Component>(&'a self, entity: Entity) -> Option<&'a T> {
+		let comp_id = self.id::<T>().expect("singleton entity does not exist");
+		let entity = comp_id.clone();	// entity = the component for singleton
+		self.get::<T>(entity)
+	}
+	
 	// TODO: should we make this return an option over panicing?
 	pub fn get<'a, T: Component>(&'a self, entity: Entity) -> Option<&'a T> {
 		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
@@ -114,7 +152,7 @@ impl World {
 		writer(dest);
 	}
 
-	pub fn id<T: Component>(&mut self) -> Option<Entity> {
+	pub fn id<T: Component>(&self) -> Option<Entity> {
 		let type_id = TypeId::of::<T>();
 
 		// see if we already cached it
@@ -140,7 +178,7 @@ impl World {
 		register_component_dynamic(self.world, symbol, Some(name), layout)
 	}
 
-	pub fn system(&mut self) -> SystemBuilder {
+	pub fn system(&self) -> SystemBuilder {
 		let system = SystemBuilder::new(self.world);
 		system
 	}
