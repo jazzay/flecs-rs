@@ -23,6 +23,10 @@ impl System {
 		}
 	}
 
+	pub fn entity(&self) -> Entity {
+		self.id.into()
+	}
+
     pub fn interval(&self, interval: f32) {
         unsafe { ecs_set_interval(self.world, self.id, interval) };
     }
@@ -99,7 +103,7 @@ impl SystemBuilder {
 	}
 	
     /** Set system context */
-    pub fn ctx(mut self, ctx: *mut ::std::os::raw::c_void) -> Self {
+    pub(crate) fn ctx(mut self, ctx: *mut ::std::os::raw::c_void) -> Self {
         self.desc.ctx = ctx;
         self
     }	
@@ -197,8 +201,12 @@ impl Iter {
 		World::new_from(unsafe { (*self.it).world })
 	}
 
-	pub fn ctx(&self) -> *mut ::std::os::raw::c_void {
-		unsafe { (*self.it).ctx }
+	pub(crate) fn real_world(&self) -> World {
+		World::new_from(unsafe { (*self.it).real_world })
+	}
+
+	pub fn system(&self) -> Entity {
+		unsafe { (*self.it).system.into() }
 	}
 
 	pub fn count(&self) -> usize {

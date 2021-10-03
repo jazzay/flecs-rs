@@ -4,6 +4,7 @@ use crate::*;
 
 pub struct World {
 	world: *mut ecs_world_t,
+	owned: bool,
 }
 
 impl World {
@@ -13,12 +14,14 @@ impl World {
 		//init_builtin_components();
 		Self {
 			world,
+			owned: true
 		}
 	}
 
 	pub(crate) fn new_from(world: *mut ecs_world_t) -> Self {
 		Self {
 			world,
+			owned: false
 		}
 	}
 
@@ -77,7 +80,7 @@ impl World {
 	}
 
 	/// Get a singleton component mutably
-	pub fn get_singleton_mut<'a, T: Component>(&'a mut self, entity: Entity) -> Option<&'a mut T> {
+	pub fn get_singleton_mut<'a, T: Component>(&'a mut self) -> Option<&'a mut T> {
 		// insert the singleton type automatically if necessary
 		if self.id::<T>().is_none() {
 			self.component::<T>();
@@ -96,7 +99,7 @@ impl World {
 	}
 	
 	/// Get a singleton component 
-	pub fn get_singleton<'a, T: Component>(&'a self, entity: Entity) -> Option<&'a T> {
+	pub fn get_singleton<'a, T: Component>(&'a self) -> Option<&'a T> {
 		let comp_id = self.id::<T>().expect("singleton entity does not exist");
 		let entity = comp_id.clone();	// entity = the component for singleton
 		self.get::<T>(entity)
@@ -186,6 +189,12 @@ impl World {
 
 impl Drop for World {
 	fn drop(&mut self) {
-		unsafe { ecs_fini(self.world) };
+		unsafe {
+			if self.owned && ecs_stage_is_async(self.world) {
+				ecs_async_stage_free(self.world);
+			} else if self.owned && !self.world.is_null() {
+				ecs_fini(self.world);
+			}
+		}
 	}
 }

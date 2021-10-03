@@ -34,11 +34,33 @@ pub use world::*;
 // - audit & fix up ALL string usages. rust -> C must null terminate!
 // - change all get<> component funcs to return Option<>
 // - validate that term components were named earlier in chain?
+// - We can only safely store primitives and raw pointer types within 
+//		components currently, due to how the raw memory is inserted/moved
+//		need to look in to hooking the lifecycle support to rust, etc
+//		This could become a bit of a deal breaker for idiomatic rust
+// 		component storage if not solved
 
 // TODO: make this better. 
 // 	possibly we could use world->set_context to hold our custom data container
 // 	associated to each world, then inside there cache the comp ids, etc
 // 	need to watch for mutable vs readonly worlds
+//
+// PROBLEM: flecs dupes the world for execution within systems to prevent
+// writing to the real world, all mutable operations are deferred. However
+// this causes multiple worlds to exist within only the root/real world actually
+// having the component ID caches. 
+// SOLVED, by the flecs actual world api - ecs_get_world(m_world)
+//
+// Good resource here:
+// https://internals.rust-lang.org/t/generic-type-dependent-static-data/8602
+
+// This might help
+// https://docs.rs/generic_static/0.2.0/generic_static/
+// Issue with statics however is then we don't get per world comp ids
+// and registering is done on the world... we would have to follow the 
+// C++ impl and detect that component was already registered prior and
+// assume that same ID again...
+
 lazy_static::lazy_static! {
     static ref WORLD_INFOS: Mutex<HashMap<WorldKey, WorldInfoCache>> = {
         let m = HashMap::new();
@@ -70,11 +92,14 @@ impl WorldInfoCache {
 		let world_key = Self::key_for_world(world);
 		let mut m = WORLD_INFOS.lock().unwrap();
 		m.insert(world_key, cache);
-		// println!("world {} added to cache", world_key);
 	}
 
 	fn key_for_world(world: *mut ecs_world_t) -> u64 {
-		world as u64
+		assert!(world != std::ptr::null_mut());
+
+		// we have to use the actual world in order lookup conponent data
+		let actual_world = unsafe { ecs_get_world(world) };
+		actual_world as u64
 	}
 
 	pub fn get_component_id_for_type<T: Component>(world: *mut ecs_world_t) -> Option<ecs_entity_t> {
