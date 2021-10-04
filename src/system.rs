@@ -284,10 +284,6 @@ impl Iter {
     }	
 }
 
-struct SystemInvoker {
-	func: dyn FnMut(&Iter)
-}
-
 pub type SystemCallback = unsafe extern "C" fn(*mut ecs_iter_t);
 
 unsafe extern "C" fn trampoline<F>(it: *mut ecs_iter_t)

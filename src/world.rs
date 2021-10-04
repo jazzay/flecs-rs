@@ -100,15 +100,19 @@ impl World {
 	
 	/// Get a singleton component 
 	pub fn get_singleton<'a, T: Component>(&'a self) -> Option<&'a T> {
-		let comp_id = self.id::<T>().expect("singleton entity does not exist");
-		let entity = comp_id.clone();	// entity = the component for singleton
-		self.get::<T>(entity)
+		let comp = self.id::<T>().expect("singleton entity does not exist");
+		let entity = comp.clone();	// entity = the component for singleton
+		self.get_internal::<T>(entity, comp.raw())
 	}
 	
 	// TODO: should we make this return an option over panicing?
 	pub fn get<'a, T: Component>(&'a self, entity: Entity) -> Option<&'a T> {
 		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
-		let value = unsafe { ecs_get_id(self.world, entity.raw(), comp_id) };
+		self.get_internal::<T>(entity, comp_id)
+	}
+
+	fn get_internal<'a, T: Component>(&'a self, entity: Entity, comp: u64) -> Option<&'a T> {
+		let value = unsafe { ecs_get_id(self.world, entity.raw(), comp) };
 		if value.is_null() {
 			return None;
 		}
