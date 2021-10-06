@@ -11,7 +11,9 @@
 
 use std::{any::TypeId, collections::HashMap, mem::{MaybeUninit}, sync::Mutex};
 
-include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+// include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+mod bindings;
+pub use bindings::*;
 
 mod component;
 pub use component::*;

@@ -3,3 +3,6 @@ Cargo.lock
 
 .vscode
 flamegraph.svg
+
+# don't bother submitting bindings for now
+/src/bindings.rs
