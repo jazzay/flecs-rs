@@ -19,13 +19,13 @@ pub fn register_component_typed<T: 'static>(world: *mut ecs_world_t, name: Optio
 	// if (_::cpp_type<T>::size()) {
 	// 	_::register_lifecycle_actions<T>(world, result);
 	// }
-	
+
 	let type_id = TypeId::of::<T>();
 	let symbol = std::any::type_name::<T>();
 	let layout = std::alloc::Layout::new::<T>();
 	let comp_id = register_component(world, 
 		ComponentDescriptor { 
-			symbol: symbol.to_owned(), 
+			symbol: name.unwrap_or(symbol).to_owned(), 	// symbol must match name I guess
 			name: name.unwrap_or("").to_owned(), 
 			custom_id: None,
 			layout 
