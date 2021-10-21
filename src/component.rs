@@ -57,7 +57,7 @@ pub fn register_component_dynamic(world: *mut ecs_world_t, symbol: &'static str,
 pub(crate) fn get_component_info(world: *mut ecs_world_t, comp_e: ecs_entity_t) -> Option<EcsComponent> {
 	// flecs stores info about components (size, align) within the world
 	// these are built-in components which we can acess via special component ids
-	let id = FLECS__EEcsComponent as u64;
+	let id = unsafe { FLECS__EEcsComponent as u64 };
 	let raw = unsafe { ecs_get_id(world, comp_e, id) };	
 	if raw.is_null() {
 		return None;

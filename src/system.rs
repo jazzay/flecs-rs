@@ -221,10 +221,6 @@ impl Iter {
 		unsafe { (*self.it).delta_system_time }
 	}
 
-	pub fn world_time(&self) -> f32 {
-		unsafe { (*self.it).world_time }
-	}
-
     pub fn term<A: Component>(&self, index: i32) -> Column<A> {
         Self::get_term::<A>(self, index)
     }

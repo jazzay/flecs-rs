@@ -30,6 +30,26 @@ pub use system::*;
 pub mod world;
 pub use world::*;
 
+// Impl some flecs funcs that were changed to Macros :(
+
+pub unsafe fn ecs_term_id(it: *const ecs_iter_t, index: i32) -> ecs_id_t {
+	assert!(index > 0);		// TODO: later add max check as well
+	let index = (index - 1) as usize;
+	let term_id = (*it).ids.add(index);
+	*term_id
+}
+
+pub unsafe fn ecs_term_is_owned(it: *const ecs_iter_t, index: i32) -> bool {
+	assert!(index > 0);		// TODO: later add max check as well
+	let index = (index - 1) as usize;
+    (*it).subjects.is_null() || (*it).subjects.add(index).is_null()
+}
+
+pub unsafe fn ecs_term_size(it: *const ecs_iter_t, index: i32) -> usize {
+	assert!(index > 0);		// TODO: later add max check as well
+    *((*it).sizes.add((index - 1) as usize)) as usize
+}
+
 // This is all WIP!
 //
 // TODOs:

@@ -90,7 +90,7 @@ impl World {
 		let entity = comp_id.clone();	// entity = the component for singleton
 
 		let mut is_added = false;
-		let dest = unsafe { ecs_get_mut_w_entity(self.world, entity.raw(), comp_id.raw(), &mut is_added) } ;
+		let dest = unsafe { ecs_get_mut_id(self.world, entity.raw(), comp_id.raw(), &mut is_added) } ;
 
 		if dest.is_null() {
 			return None;
@@ -129,7 +129,7 @@ impl World {
 	pub fn set<T: Component>(&self, entity: Entity, value: T) {
 		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
 		let mut is_added = false;
-		let dest = unsafe { ecs_get_mut_w_entity(self.world, entity.raw(), comp_id, &mut is_added) } ;
+		let dest = unsafe { ecs_get_mut_id(self.world, entity.raw(), comp_id, &mut is_added) } ;
 		let dest = unsafe { (dest as *mut T).as_mut().unwrap() };
 		*dest = value;
 	}
@@ -137,7 +137,7 @@ impl World {
 	pub fn read_component(&self, entity: Entity, comp: Entity) -> Option<&[u8]> {
 		let info = get_component_info(self.world, comp.raw()).expect("Component type not registered!");
 		let src = unsafe { 
-			let ptr = ecs_get_w_entity(self.world, entity.raw(), comp.raw()) as *const u8;
+			let ptr = ecs_get_id(self.world, entity.raw(), comp.raw()) as *const u8;
 			if ptr.is_null() {
 				return None;
 			}
@@ -152,7 +152,7 @@ impl World {
 		let info = get_component_info(self.world, comp.raw()).expect("Component type not registered!");
 		let mut is_added = false;
 		let dest = unsafe { 
-			let ptr = ecs_get_mut_w_entity(self.world, entity.raw(), comp.raw(), &mut is_added) as *mut u8;
+			let ptr = ecs_get_mut_id(self.world, entity.raw(), comp.raw(), &mut is_added) as *mut u8;
 			std::slice::from_raw_parts_mut(ptr, info.size as usize)
 		};
 

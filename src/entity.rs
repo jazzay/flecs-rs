@@ -53,7 +53,7 @@ impl EntityBuilder {
 		let info = get_component_info(self.world, comp.raw()).expect("Component type not registered!");
 		let mut is_added = false;
 		let dest = unsafe { 
-			let ptr = ecs_get_mut_w_entity(self.world, self.entity, comp.raw(), &mut is_added) as *mut u8;
+			let ptr = ecs_get_mut_id(self.world, self.entity, comp.raw(), &mut is_added) as *mut u8;
 			std::slice::from_raw_parts_mut(ptr, info.size as usize)
 		};
 
@@ -66,7 +66,7 @@ impl EntityBuilder {
 		let info = get_component_info(self.world, comp.raw()).expect("Component type not registered!");
 		let mut is_added = false;
 		let dest = unsafe { 
-			let ptr = ecs_get_mut_w_entity(self.world, self.entity, comp.raw(), &mut is_added) as *mut u8;
+			let ptr = ecs_get_mut_id(self.world, self.entity, comp.raw(), &mut is_added) as *mut u8;
 			std::slice::from_raw_parts_mut(ptr, info.size as usize)
 		};
 
@@ -79,7 +79,7 @@ impl EntityBuilder {
     pub fn get_mut<T: Component>(&mut self) -> &mut T  {
 		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
 		let mut is_added = false;
-		let value = unsafe { ecs_get_mut_w_entity(self.world, self.entity, comp_id, &mut is_added) };
+		let value = unsafe { ecs_get_mut_id(self.world, self.entity, comp_id, &mut is_added) };
 		unsafe { (value as *mut T).as_mut().unwrap() }
     }
 
@@ -102,7 +102,7 @@ impl EntityBuilder {
     fn get_mut_dynamic(&mut self, symbol: &'static str) -> &mut [u8]  {
 		let comp_info = WorldInfoCache::get_component_id_for_symbol(self.world, symbol).unwrap();
 		let mut is_added = false;
-		let value = unsafe { ecs_get_mut_w_entity(self.world, self.entity, comp_info.id, &mut is_added) };
+		let value = unsafe { ecs_get_mut_id(self.world, self.entity, comp_info.id, &mut is_added) };
 		unsafe { 
 			let ptr = value as *mut u8;
 			let len = comp_info.size;
@@ -156,7 +156,7 @@ impl EntityRef {
 	pub fn get_component(&self, comp: Entity) -> &[u8] {
 		let info = get_component_info(self.world, comp.raw()).expect("Component type not registered!");
 		let src = unsafe { 
-			let ptr = ecs_get_w_entity(self.world, self.entity, comp.raw()) as *const u8;
+			let ptr = ecs_get_id(self.world, self.entity, comp.raw()) as *const u8;
 			std::slice::from_raw_parts(ptr, info.size as usize)
 		};
 
