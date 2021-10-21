@@ -39,15 +39,37 @@ pub unsafe fn ecs_term_id(it: *const ecs_iter_t, index: i32) -> ecs_id_t {
 	*term_id
 }
 
-pub unsafe fn ecs_term_is_owned(it: *const ecs_iter_t, index: i32) -> bool {
+pub unsafe fn ecs_term_source(it: *const ecs_iter_t, index: i32) -> ecs_entity_t {
 	assert!(index > 0);		// TODO: later add max check as well
-	let index = (index - 1) as usize;
-    (*it).subjects.is_null() || (*it).subjects.add(index).is_null()
+    if (*it).subjects.is_null() {
+		0
+	} else {
+		let index = (index - 1) as usize;
+		*((*it).subjects.add(index))
+	} 
 }
 
 pub unsafe fn ecs_term_size(it: *const ecs_iter_t, index: i32) -> size_t {
 	assert!(index > 0);		// TODO: later add max check as well
     *((*it).sizes.add((index - 1) as usize)) as size_t
+}
+
+pub unsafe fn ecs_term_is_owned(it: *const ecs_iter_t, index: i32) -> bool {
+	assert!(index > 0);		// TODO: later add max check as well
+	let index = (index - 1) as usize;
+    (*it).subjects.is_null() || *((*it).subjects.add(index)) == 0
+}
+
+// This access query/filter term component data
+pub unsafe fn ecs_term<T: Component>(it: *const ecs_iter_t, index: i32) -> *mut T {
+	let size = std::mem::size_of::<T>();
+	ecs_term_w_size(it, size as size_t, index) as *mut T
+}
+
+// This accesses all table columns for a matched archetype
+pub unsafe fn ecs_iter_column<T: Component>(it: *const ecs_iter_t, index: i32) -> *mut T {
+	let size = std::mem::size_of::<T>();
+	ecs_iter_column_w_size(it, size as size_t, index) as *mut T
 }
 
 // This is all WIP!

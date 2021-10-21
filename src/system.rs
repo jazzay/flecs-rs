@@ -245,8 +245,7 @@ impl Iter {
 
         let mut count = self.count();
 
-		// TODO: this seems to be always returning true even when the component is not from a prefab/super
-        let is_shared = false;	//unsafe { !ecs_term_is_owned(self.it, index) };
+        let is_shared = unsafe { !ecs_term_is_owned(self.it, index) };
 
         /* If a shared column is retrieved with 'column', there will only be a
          * single value. Ensure that the application does not accidentally read
