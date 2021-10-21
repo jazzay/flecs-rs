@@ -244,7 +244,9 @@ impl Iter {
 		*/
 
         let mut count = self.count();
-        let is_shared = unsafe { !ecs_term_is_owned(self.it, index) };
+
+		// TODO: this seems to be always returning true even when the component is not from a prefab/super
+        let is_shared = false;	//unsafe { !ecs_term_is_owned(self.it, index) };
 
         /* If a shared column is retrieved with 'column', there will only be a
          * single value. Ensure that the application does not accidentally read
@@ -252,6 +254,7 @@ impl Iter {
         if is_shared {
             count = 1;
         }
+		// println!("Term: {}, is_shared: {}, count: {}", term_id, is_shared, count);
 
 		let size = std::mem::size_of::<T>();
 		let array = unsafe { ecs_term_w_size(self.it, size as u64, index) as *mut T };

@@ -45,9 +45,9 @@ pub unsafe fn ecs_term_is_owned(it: *const ecs_iter_t, index: i32) -> bool {
     (*it).subjects.is_null() || (*it).subjects.add(index).is_null()
 }
 
-pub unsafe fn ecs_term_size(it: *const ecs_iter_t, index: i32) -> usize {
+pub unsafe fn ecs_term_size(it: *const ecs_iter_t, index: i32) -> size_t {
 	assert!(index > 0);		// TODO: later add max check as well
-    *((*it).sizes.add((index - 1) as usize)) as usize
+    *((*it).sizes.add((index - 1) as usize)) as size_t
 }
 
 // This is all WIP!
