@@ -1,23 +1,39 @@
 use crate::*;
 
+pub type EntityId = ecs_entity_t;
+
+// impl From<u64> for EntityId {
+//     fn from(v: u64) -> Self {
+//         v as EntityId
+//     }
+// }
+
+// WIP - This should become like the flecs::entity class
+//
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
 pub struct Entity {
-	entity: ecs_entity_t,
-	// world: *mut ecs_world_t,
+	id: EntityId,
+	world: *mut ecs_world_t,
 }
 
 impl Entity {
-	pub(crate) fn new(entity: ecs_entity_t) -> Self {
-		Self { entity }
+	pub(crate) fn new(world: *mut ecs_world_t, id: EntityId) -> Self {
+		Self { id, world }
 	}
 
-	pub(crate) fn raw(&self) -> ecs_entity_t { self.entity }
-}
+	pub(crate) fn raw(&self) -> EntityId { 
+		self.id 
+	}
 
-impl From<u64> for Entity {
-    fn from(v: u64) -> Self {
-        Entity::new(v)
-    }
+	pub fn get<T: Component>(&self) -> &T {
+		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
+		let value = unsafe { ecs_get_id(self.world, self.id, comp_id) };
+		unsafe { (value as *const T).as_ref().unwrap() }
+	}
+
+	pub fn destruct(self) {
+		unsafe { ecs_delete(self.world, self.id) }; 
+	}
 }
 
 impl From<Entity> for u64 {
@@ -44,9 +60,18 @@ impl EntityBuilder {
 		self
 	}
 
-	pub fn add_component(self, component: Entity) -> Self {
-        unsafe { ecs_add_id(self.world, self.entity, component.raw()) };
+	pub fn is_a(self, object: Entity) -> Self {
+        unsafe { self.add_relation(EcsIsA, object.raw()) }
+	}
+
+	pub fn add_id(self, id: EntityId) -> Self {
+        unsafe { ecs_add_id(self.world, self.entity, id) };
 		self
+	}
+
+	pub fn add_relation(self, relation: EntityId, object: EntityId) -> Self {
+        let pair = unsafe { ecs_make_pair(relation, object) };
+		self.add_id(pair)
 	}
 
 	pub fn set_component(self, comp: Entity, src: &[u8]) -> Self {
@@ -126,7 +151,7 @@ impl EntityBuilder {
 	// Completing the build
 	//
 	pub fn build(self) -> Entity {
-		Entity::new(self.entity)
+		Entity::new(self.world, self.entity)
 	}
 }
 

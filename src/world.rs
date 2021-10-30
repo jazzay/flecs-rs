@@ -31,7 +31,15 @@ impl World {
 
 	pub fn entity(&self) -> Entity {
 		let entity = unsafe { ecs_new_id(self.world) };
-		Entity::new(entity)
+		Entity::new(self.world, entity)
+	}
+
+	pub fn prefab(&self, name: &str) -> EntityBuilder {
+		unsafe {
+			EntityBuilder::new(self.world)
+				.name(name)
+				.add_id(EcsPrefab)
+		}
 	}
 
 	pub fn entity_builder(&mut self) -> EntityBuilder {
@@ -164,24 +172,24 @@ impl World {
 
 		// see if we already cached it
 		if let Some(comp_id) = WorldInfoCache::get_component_id_for_type::<T>(self.world) {
-			return Some(Entity::new(comp_id));
+			return Some(Entity::new(self.world, comp_id));
 		}
 		None
 	}
 
-	pub fn component<T: 'static>(&mut self) -> Entity {
+	pub fn component<T: 'static>(&mut self) -> EntityId {
 		register_component_typed::<T>(self.world, None)
 	}
 
-	pub fn component_named<T: 'static>(&mut self, name: &'static str) -> Entity {
+	pub fn component_named<T: 'static>(&mut self, name: &'static str) -> EntityId {
 		register_component_typed::<T>(self.world, Some(name))
 	}
 
-	pub fn component_dynamic(&mut self, symbol: &'static str, layout: Layout) -> Entity {
+	pub fn component_dynamic(&mut self, symbol: &'static str, layout: Layout) -> EntityId {
 		register_component_dynamic(self.world, symbol, None, layout)
 	}
 
-	pub fn component_dynamic_named(&mut self, symbol: &'static str, name: &'static str, layout: Layout) -> Entity {
+	pub fn component_dynamic_named(&mut self, symbol: &'static str, name: &'static str, layout: Layout) -> EntityId {
 		register_component_dynamic(self.world, symbol, Some(name), layout)
 	}
 

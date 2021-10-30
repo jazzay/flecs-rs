@@ -24,7 +24,7 @@ impl System {
 	}
 
 	pub fn entity(&self) -> Entity {
-		self.id.into()
+		Entity::new(self.world, self.id)
 	}
 
     pub fn interval(&self, interval: f32) {
@@ -206,7 +206,7 @@ impl Iter {
 	}
 
 	pub fn system(&self) -> Entity {
-		unsafe { (*self.it).system.into() }
+		unsafe { Entity::new((*self.it).world, (*self.it).system) }
 	}
 
 	pub fn count(&self) -> usize {

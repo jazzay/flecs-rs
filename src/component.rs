@@ -9,10 +9,10 @@ use crate::*;
 //		for example Position {} -> 'module.Position'
 //		then plugins could lookup/cache the runtime id via those names
 
-pub fn register_component_typed<T: 'static>(world: *mut ecs_world_t, name: Option<&'static str>) -> Entity {
+pub fn register_component_typed<T: 'static>(world: *mut ecs_world_t, name: Option<&'static str>) -> EntityId {
 	// see if we already cached it
 	if let Some(comp_id) = WorldInfoCache::get_component_id_for_type::<T>(world) {
-		return Entity::new(comp_id);
+		return comp_id;
 	}
 
 	// let result: Entity = pod_component<T>(world, name);
@@ -32,15 +32,14 @@ pub fn register_component_typed<T: 'static>(world: *mut ecs_world_t, name: Optio
 	});
 
 	WorldInfoCache::register_component_id_for_type_id(world, comp_id, type_id);
-	Entity::new(comp_id)
+	comp_id
 }
 
-pub fn register_component_dynamic(world: *mut ecs_world_t, symbol: &'static str, name: Option<&'static str>, layout: Layout) -> Entity {
+pub fn register_component_dynamic(world: *mut ecs_world_t, symbol: &'static str, name: Option<&'static str>, layout: Layout) -> EntityId {
 	// see if we already cached it
 	if let Some(comp_info) = WorldInfoCache::get_component_id_for_symbol(world, symbol) {
-		return Entity::new(comp_info.id);
+		return comp_info.id;
 	}
-	
 	let comp_id = register_component(world, 
 		ComponentDescriptor { 
 			symbol: symbol.to_owned(), 
@@ -50,7 +49,7 @@ pub fn register_component_dynamic(world: *mut ecs_world_t, symbol: &'static str,
 	});
 
 	WorldInfoCache::register_component_id_for_symbol(world, comp_id, symbol, layout.size());
-	Entity::new(comp_id)
+	comp_id
 }
 
 // Looks up the EcsComponent data on a Component entity
