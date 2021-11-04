@@ -12,31 +12,45 @@ pub type EntityId = ecs_entity_t;
 //
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
 pub struct Entity {
-	id: EntityId,
+	entity: EntityId,
 	world: *mut ecs_world_t,
 }
 
 impl Entity {
-	pub(crate) fn new(world: *mut ecs_world_t, id: EntityId) -> Self {
-		Self { id, world }
+	pub(crate) fn new(world: *mut ecs_world_t, entity: EntityId) -> Self {
+		Self { entity, world }
 	}
 
 	pub(crate) fn raw(&self) -> EntityId { 
-		self.id 
+		self.entity 
 	}
 
 	pub fn id(&self) -> EntityId { 
-		self.id 
+		self.entity 
+	}
+
+	pub fn is_a(self, object: EntityId) -> Self {
+        unsafe { self.add_relation(EcsIsA, object) }
+	}
+
+	pub fn add_id(self, id: EntityId) -> Self {
+        unsafe { ecs_add_id(self.world, self.entity, id) };
+		self
+	}
+
+	pub fn add_relation(self, relation: EntityId, object: EntityId) -> Self {
+        let pair = unsafe { ecs_make_pair(relation, object) };
+		self.add_id(pair)
 	}
 
 	pub fn get<T: Component>(&self) -> &T {
 		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
-		let value = unsafe { ecs_get_id(self.world, self.id, comp_id) };
+		let value = unsafe { ecs_get_id(self.world, self.entity, comp_id) };
 		unsafe { (value as *const T).as_ref().unwrap() }
 	}
 
 	pub fn destruct(self) {
-		unsafe { ecs_delete(self.world, self.id) }; 
+		unsafe { ecs_delete(self.world, self.entity) }; 
 	}
 }
 

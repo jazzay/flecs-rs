@@ -63,7 +63,12 @@ impl World {
         unsafe { ecs_should_quit(self.world) }
     }
 
-	pub fn lookup(name: &str) -> Option<Entity> {
+	pub fn find_entity(&self, entity: EntityId) -> Option<Entity> {
+		// TODO: check that it exists!
+		Some(Entity::new(self.world, entity))
+	}
+
+	pub fn lookup(&self, name: &str) -> Option<Entity> {
 		None
 	}
 
