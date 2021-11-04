@@ -142,10 +142,10 @@ impl World {
 		*dest = value;
 	}
 
-	pub fn read_component(&self, entity: Entity, comp: Entity) -> Option<&[u8]> {
-		let info = get_component_info(self.world, comp.raw()).expect("Component type not registered!");
+	pub fn read_component(&self, entity: EntityId, comp: EntityId) -> Option<&[u8]> {
+		let info = get_component_info(self.world, comp).expect("Component type not registered!");
 		let src = unsafe { 
-			let ptr = ecs_get_id(self.world, entity.raw(), comp.raw()) as *const u8;
+			let ptr = ecs_get_id(self.world, entity, comp) as *const u8;
 			if ptr.is_null() {
 				return None;
 			}
@@ -156,11 +156,11 @@ impl World {
 		Some(src)
 	}
 
-	pub fn write_component<F: FnMut(&mut [u8])>(&self, entity: Entity, comp: Entity, mut writer: F) {
-		let info = get_component_info(self.world, comp.raw()).expect("Component type not registered!");
+	pub fn write_component<F: FnMut(&mut [u8])>(&self, entity: EntityId, comp: EntityId, mut writer: F) {
+		let info = get_component_info(self.world, comp).expect("Component type not registered!");
 		let mut is_added = false;
 		let dest = unsafe { 
-			let ptr = ecs_get_mut_id(self.world, entity.raw(), comp.raw(), &mut is_added) as *mut u8;
+			let ptr = ecs_get_mut_id(self.world, entity, comp, &mut is_added) as *mut u8;
 			std::slice::from_raw_parts_mut(ptr, info.size as usize)
 		};
 
