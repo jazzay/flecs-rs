@@ -9,7 +9,7 @@ use crate::*;
 //		for example Position {} -> 'module.Position'
 //		then plugins could lookup/cache the runtime id via those names
 
-pub fn register_component_typed<T: 'static>(world: *mut ecs_world_t, name: Option<&'static str>) -> EntityId {
+pub fn register_component_typed<T: 'static>(world: *mut ecs_world_t, name: Option<&str>) -> EntityId {
 	// see if we already cached it
 	if let Some(comp_id) = WorldInfoCache::get_component_id_for_type::<T>(world) {
 		return comp_id;
