@@ -6,13 +6,9 @@ fn main() {
     // Tell cargo to tell rustc to link the system bzip2 shared library.
     // println!("cargo:rustc-link-lib=bz2");
 
-	// JJ - These appear to be making the build.rs always run regardles
-	//		taling 10s in some case for no actual change
-    // Tell cargo to invalidate the built crate whenever the header changes
-    // println!("cargo:rerun-if-changed=flecs.h");
-    // println!("cargo:rerun-if-changed=flecs.cpp");
-	// This was suggested to fix that, but in fact if I specify nothing it appears to work ok
-	// println!("cargo:rerun-if-changed=build.rs");
+    // Tell cargo to invalidate the built crate whenever the sources change
+    println!("cargo:rerun-if-changed=flecs.h");
+    println!("cargo:rerun-if-changed=flecs.c");
 
     // The bindgen::Builder is the main entry point
     // to bindgen, and lets you build up options for
