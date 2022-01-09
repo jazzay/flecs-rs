@@ -142,7 +142,7 @@ impl WorldInfoCache {
 		assert!(world != std::ptr::null_mut());
 
 		// we have to use the actual world in order lookup conponent data
-		let actual_world = unsafe { ecs_get_world(world) };
+		let actual_world = unsafe { ecs_get_world(world as *const ecs_poly_t) };
 		actual_world as u64
 	}
 

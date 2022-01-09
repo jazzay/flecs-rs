@@ -141,6 +141,7 @@ pub fn register_component(world: *mut ecs_world_t, desc: ComponentDescriptor) ->
 	
 	// let s_id = 0;
 	let comp_desc = ecs_component_desc_t {
+        _canary: 0,
 		entity: e_desc,
 	// 	entity: ecs_entity_desc_t {
 	// 		entity = s_id,
