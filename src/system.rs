@@ -221,6 +221,15 @@ impl Iter {
 		unsafe { (*self.it).delta_system_time }
 	}
 
+    pub fn entity(&self, index: i32) -> Entity {
+		let entity = unsafe {
+			let id = (*self.it).entities.offset(index as isize);
+			id.as_ref().unwrap()
+		};
+
+		Entity::new(unsafe { (*self.it).world }, *entity)
+    }
+
     pub fn term<A: Component>(&self, index: i32) -> Column<A> {
         Self::get_term::<A>(self, index)
     }
