@@ -202,6 +202,22 @@ impl World {
 		let system = SystemBuilder::new(self.world);
 		system
 	}
+
+	// Iteration
+
+	pub fn each1<A: Component>(&self, mut cb: impl FnMut(Entity, &A)) {
+		let filter = Filter::new_1::<A>(self.raw());
+		filter.each_1(|e: Entity, a: &A| {
+			cb(e, a);
+		});
+	}
+
+	pub fn each2<A: Component, B: Component>(&self, mut cb: impl FnMut(Entity, &A, &B)) {
+		let filter = Filter::new_2::<A, B>(self.raw());
+		filter.each_2(|e: Entity, a: &A, b: &B| {
+			cb(e, a, b);
+		});
+	}	
 }
 
 impl Drop for World {

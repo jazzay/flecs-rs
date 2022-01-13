@@ -13,7 +13,37 @@ pub struct Filter {
 	filter: Box<ecs_filter_t>,	
 }
 
+// TODO - need to support generalized API via tuples or something
 impl Filter {
+	pub fn new_1<A: Component>(world: *mut ecs_world_t) -> Self {
+		let mut desc: ecs_filter_desc_t = unsafe { MaybeUninit::zeroed().assume_init() };
+
+		// TODO: add batch type lookup!
+		desc.terms[0].id = WorldInfoCache::get_component_id_for_type::<A>(world).expect("Component type not registered!");
+
+		let filter: ecs_filter_t = unsafe { MaybeUninit::zeroed().assume_init() };
+		let mut filter = Box::new(filter);
+
+		unsafe { ecs_filter_init(world, filter.as_mut(), &desc) };
+		Filter { world, filter }
+	}
+
+	pub fn each_1<A: Component>(&self, mut cb: impl FnMut(Entity, &A)) {
+		let f = &self.filter;
+		unsafe {
+			let mut it = ecs_filter_iter(self.world, f.as_ref());
+			while ecs_filter_next(&mut it) {
+				let a = ecs_term::<A>(&it, 1);
+				for i in 0..it.count {
+                    let eid = it.entities.offset(i as isize).as_ref().unwrap();
+                    let e = Entity::new(self.world, *eid);
+					let va = a.offset(i as isize);
+					cb(e, va.as_ref().unwrap());
+				}
+			}
+		}		
+	}
+
 	pub fn new_2<A: Component, B: Component>(world: *mut ecs_world_t) -> Self {
 		let mut desc: ecs_filter_desc_t = unsafe { MaybeUninit::zeroed().assume_init() };
 
@@ -30,7 +60,7 @@ impl Filter {
 		Filter { world, filter }
 	}
 
-	pub fn each<A: Component, B: Component>(&self, mut cb: impl FnMut(&A, &B)) {
+	pub fn each_2<A: Component, B: Component>(&self, mut cb: impl FnMut(Entity, &A, &B)) {
 		let f = &self.filter;
 		// println!("each - filter: {}, {}, {}", f.term_cache_used, f.terms as u64, f.term_cache.as_ptr() as u64);
 		unsafe {
@@ -43,9 +73,11 @@ impl Filter {
 				// Iterate all entities for the type
 				for i in 0..it.count {
 					//printf("%s: {%f, %f}\n", ecs_get_name(world, it.entities[i]), p[i].x, p[i].y);
+                    let eid = it.entities.offset(i as isize).as_ref().unwrap();
+                    let e = Entity::new(self.world, *eid);
 					let va = a.offset(i as isize);
 					let vb = b.offset(i as isize);
-					cb(va.as_ref().unwrap(), vb.as_ref().unwrap());
+					cb(e, va.as_ref().unwrap(), vb.as_ref().unwrap());
 				}
 			}
 		}		

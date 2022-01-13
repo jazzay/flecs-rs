@@ -29,6 +29,25 @@ impl Entity {
 		self.entity 
 	}
 
+	pub fn name(&self) -> &str {
+		let char_ptr = unsafe { ecs_get_name(self.world, self.entity) };
+		if char_ptr.is_null() {
+			return "";
+		}
+
+		let c_str = unsafe { std::ffi::CStr::from_ptr(char_ptr) };
+		let name = c_str.to_str().unwrap();
+		name
+	}
+
+	pub fn named(self, name: &str) -> Self {
+        unsafe { 
+			let name_c_str = std::ffi::CString::new(name).unwrap();
+			ecs_set_name(self.world, self.entity, name_c_str.as_ptr());
+		};
+		self
+	}
+
 	pub fn is_a(self, object: EntityId) -> Self {
         unsafe { self.add_relation(EcsIsA, object) }
 	}
@@ -47,6 +66,35 @@ impl Entity {
 		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
 		let value = unsafe { ecs_get_id(self.world, self.entity, comp_id) };
 		unsafe { (value as *const T).as_ref().unwrap() }
+	}
+
+    pub fn get_mut<T: Component>(&mut self) -> &mut T  {
+		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
+		let mut is_added = false;
+		let value = unsafe { ecs_get_mut_id(self.world, self.entity, comp_id, &mut is_added) };
+		unsafe { (value as *mut T).as_mut().unwrap() }
+    }
+
+	pub fn set<T: Component>(mut self, value: T) -> Self {
+		let dest = self.get_mut::<T>();
+		*dest = value;
+		self
+	}
+
+	pub fn add<T: Component>(self) -> Self {
+        // flecs_static_assert(is_flecs_constructible<T>::value,
+        //     "cannot default construct type: add T::T() or use emplace<T>()");
+		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
+        unsafe { ecs_add_id(self.world, self.entity, comp_id) };
+		self
+	}
+
+	pub fn remove<T: Component>(self) -> Self {
+        // flecs_static_assert(is_flecs_constructible<T>::value,
+        //     "cannot default construct type: add T::T() or use emplace<T>()");
+		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
+        unsafe { ecs_remove_id(self.world, self.entity, comp_id) };
+		self
 	}
 
 	pub fn destruct(self) {
