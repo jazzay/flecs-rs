@@ -4,7 +4,7 @@ use super::*;
 
 
 lazy_static::lazy_static! {
-    static ref NAME_SEP: std::ffi::CString = {
+    pub(crate) static ref NAME_SEP: std::ffi::CString = {
 		let sep = std::ffi::CString::new("::").unwrap();
 		sep
     };

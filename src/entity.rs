@@ -2,6 +2,26 @@ use crate::*;
 
 pub type EntityId = ecs_entity_t;
 
+pub trait AsEcsId {
+	fn id(&self) -> ecs_id_t;
+}
+
+impl AsEcsId for EntityId {
+	fn id(&self) -> ecs_id_t {
+		*self
+	}
+}
+
+// TODO - Placeholder for now
+pub struct EcsType {
+}
+
+impl EcsType {
+	pub fn to_string(&self) -> String {
+		"TBD".into()
+	}
+}
+
 // impl From<u64> for EntityId {
 //     fn from(v: u64) -> Self {
 //         v as EntityId
@@ -14,6 +34,12 @@ pub type EntityId = ecs_entity_t;
 pub struct Entity {
 	entity: EntityId,
 	world: *mut ecs_world_t,
+}
+
+impl AsEcsId for Entity {
+	fn id(&self) -> ecs_id_t {
+		self.id()
+	}
 }
 
 impl Entity {
@@ -40,6 +66,22 @@ impl Entity {
 		name
 	}
 
+	pub fn path(&self) -> &str {
+		let sep = NAME_SEP.as_ptr() as *const i8;	// for now only support :: as sep
+		let path_ptr = unsafe { ecs_get_path_w_sep(self.world, 0, self.entity, sep, sep) };
+		if path_ptr.is_null() {
+			return "";
+		}
+
+		let c_str = unsafe { std::ffi::CStr::from_ptr(path_ptr) };
+		let path = c_str.to_str().unwrap();
+		path
+	}
+
+	pub fn get_type(&self) -> EcsType {
+		EcsType { }
+	}
+
 	pub fn named(self, name: &str) -> Self {
         unsafe { 
 			let name_c_str = std::ffi::CString::new(name).unwrap();
@@ -48,17 +90,35 @@ impl Entity {
 		self
 	}
 
-	pub fn is_a(self, object: EntityId) -> Self {
-        unsafe { self.add_relation(EcsIsA, object) }
+	pub fn is_a<T: AsEcsId>(self, object: T) -> Self {
+        unsafe { self.add_relation(EcsIsA, object.id()) }
 	}
 
-	pub fn add_id(self, id: EntityId) -> Self {
-        unsafe { ecs_add_id(self.world, self.entity, id) };
+	pub fn child_of<T: AsEcsId>(self, object: T) -> Self {
+        unsafe { self.add_relation(EcsChildOf, object.id()) }
+	}
+
+    pub fn has_id<T: AsEcsId>(self, id: T) -> bool {
+        unsafe { ecs_has_id(self.world, self.entity, id.id()) }
+    }
+
+	pub fn add_id<T: AsEcsId>(self, id: T) -> Self {
+        unsafe { ecs_add_id(self.world, self.entity, id.id()) };
 		self
 	}
 
-	pub fn add_relation(self, relation: EntityId, object: EntityId) -> Self {
-        let pair = unsafe { ecs_make_pair(relation, object) };
+    pub fn has_relation<R: AsEcsId, O: AsEcsId>(self, relation: R, object: O) -> bool {
+        let pair = unsafe { ecs_make_pair(relation.id(), object.id()) };
+        unsafe { ecs_has_id(self.world, self.entity, pair) }
+    }
+
+    pub fn has_child<T: AsEcsId>(self, child: T) -> bool {
+        let pair = unsafe { ecs_make_pair(EcsChildOf, child.id()) };
+        unsafe { ecs_has_id(self.world, self.entity, pair) }
+    }
+
+	pub fn add_relation<R: AsEcsId, O: AsEcsId>(self, relation: R, object: O) -> Self {
+        let pair = unsafe { ecs_make_pair(relation.id(), object.id()) };
 		self.add_id(pair)
 	}
 
@@ -99,6 +159,27 @@ impl Entity {
 
 	pub fn destruct(self) {
 		unsafe { ecs_delete(self.world, self.entity) }; 
+	}
+
+	pub fn children(&self, mut cb: impl FnMut(Entity)) {
+		unsafe {
+			let mut desc: ecs_filter_desc_t = MaybeUninit::zeroed().assume_init();
+			desc.terms[0].id = ecs_make_pair(EcsChildOf, self.id());
+			desc.terms[1].id = EcsPrefab;
+			desc.terms[1].oper = ecs_oper_kind_t_EcsOptional;
+
+			let mut filter: ecs_filter_t = MaybeUninit::zeroed().assume_init();
+			ecs_filter_init(self.world, &mut filter, &desc);
+
+			let mut it = ecs_filter_iter(self.world, &filter);
+			while ecs_filter_next(&mut it) {
+				for i in 0..it.count {
+                    let eid = it.entities.offset(i as isize).as_ref().unwrap();
+                    let e = Entity::new(self.world, *eid);
+					cb(e);
+				}
+			}
+		}
 	}
 }
 
