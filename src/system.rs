@@ -356,6 +356,15 @@ impl<T: Component> Column<T> {
 			value.as_ref().unwrap()
 		}
 	}
+
+	pub fn get_mut(&self, index: usize) -> &mut T {
+		assert!(index < self.count);
+		assert!(index == 0 || !self.is_shared);
+		unsafe {
+			let value = self.array.offset(index as isize);
+			value.as_mut().unwrap()
+		}
+	}
 }
 
 pub struct ColumnDynamic {
