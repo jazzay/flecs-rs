@@ -6,14 +6,13 @@ struct Position {
 	y: f32,
 }
 
-// #[derive(Default, Debug, PartialEq)]
 struct Star { }
 struct Planet { }
 struct Moon { }
 
 fn iterate_tree(e: Entity, parent_pos: Position) {
     // Print hierarchical name of entity & the entity type
-    println!("{} [{}]", e.path(), e.get_type().to_string());
+    println!("{} [{}]", e.path(), e.type_info().to_str());
 
     // Get entity position
     let p = e.get::<Position>();

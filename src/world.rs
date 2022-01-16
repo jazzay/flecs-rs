@@ -182,8 +182,9 @@ impl World {
 		None
 	}
 
-	pub fn component<T: 'static>(&mut self) -> EntityId {
-		register_component_typed::<T>(self.world, None)
+	pub fn component<T: 'static>(&mut self) -> Entity {
+		let comp_id = register_component_typed::<T>(self.world, None);
+		Entity::new(self.world, comp_id)
 	}
 
 	pub fn component_named<T: 'static>(&mut self, name: &str) -> EntityId {

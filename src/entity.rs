@@ -13,12 +13,39 @@ impl AsEcsId for EntityId {
 }
 
 // TODO - Placeholder for now
-pub struct EcsType {
+pub struct EntityTypeInfo {
+    entity: Entity,
+    table: *const ecs_table_t,
 }
 
-impl EcsType {
-	pub fn to_string(&self) -> String {
-		"TBD".into()
+impl EntityTypeInfo {
+    pub fn new(world: *mut ecs_world_t, entity: EntityId) -> EntityTypeInfo { 
+		let table = unsafe { ecs_get_table(world, entity) };
+
+		// type is attached to global entity (0)??
+        let entity = Entity::new(world, 0);
+		
+		EntityTypeInfo {
+			entity,
+			table
+		}
+	}
+
+	pub fn to_str(&self) -> &str {
+		unsafe {
+			let w = ecs_get_world(self.entity.world as *const ecs_poly_t);
+			let t = ecs_table_get_type(self.table);
+			let type_str = ecs_type_str(w, t);
+
+			// for some reason this str is coming back with weird numeric encoding
+			// causing the CStr conversion below to panic. for now return ""
+			let type_str = std::ffi::CStr::from_ptr(type_str);
+			println!("type_str: {:?}", type_str);
+
+			// let type_str = type_str.to_str().unwrap();
+			// type_str
+			""
+		}
 	}
 }
 
@@ -78,8 +105,8 @@ impl Entity {
 		path
 	}
 
-	pub fn get_type(&self) -> EcsType {
-		EcsType { }
+	pub fn type_info(&self) -> EntityTypeInfo {
+		EntityTypeInfo::new(self.world, self.id())
 	}
 
 	pub fn named(self, name: &str) -> Self {
@@ -91,11 +118,11 @@ impl Entity {
 	}
 
 	pub fn is_a<T: AsEcsId>(self, object: T) -> Self {
-        unsafe { self.add_relation(EcsIsA, object.id()) }
+        unsafe { self.add_relation_ids(EcsIsA, object.id()) }
 	}
 
 	pub fn child_of<T: AsEcsId>(self, object: T) -> Self {
-        unsafe { self.add_relation(EcsChildOf, object.id()) }
+        unsafe { self.add_relation_ids(EcsChildOf, object.id()) }
 	}
 
     pub fn has_id<T: AsEcsId>(self, id: T) -> bool {
@@ -117,7 +144,7 @@ impl Entity {
         unsafe { ecs_has_id(self.world, self.entity, pair) }
     }
 
-	pub fn add_relation<R: AsEcsId, O: AsEcsId>(self, relation: R, object: O) -> Self {
+	pub fn add_relation_ids<R: AsEcsId, O: AsEcsId>(self, relation: R, object: O) -> Self {
         let pair = unsafe { ecs_make_pair(relation.id(), object.id()) };
 		self.add_id(pair)
 	}
@@ -142,16 +169,20 @@ impl Entity {
 	}
 
 	pub fn add<T: Component>(self) -> Self {
-        // flecs_static_assert(is_flecs_constructible<T>::value,
-        //     "cannot default construct type: add T::T() or use emplace<T>()");
 		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
         unsafe { ecs_add_id(self.world, self.entity, comp_id) };
 		self
 	}
 
+	pub fn add_relation<R: Component, O: Component>(self) -> Self {
+		let relation = WorldInfoCache::get_component_id_for_type::<R>(self.world).expect("Relation type not registered!");
+		let object = WorldInfoCache::get_component_id_for_type::<O>(self.world).expect("Object type not registered!");
+        let pair = unsafe { ecs_make_pair(relation, object) };
+        unsafe { ecs_add_id(self.world, self.entity, pair) };
+		self
+	}
+
 	pub fn remove<T: Component>(self) -> Self {
-        // flecs_static_assert(is_flecs_constructible<T>::value,
-        //     "cannot default construct type: add T::T() or use emplace<T>()");
 		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
         unsafe { ecs_remove_id(self.world, self.entity, comp_id) };
 		self

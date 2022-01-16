@@ -26,7 +26,7 @@ fn create_some_entities(world: &mut World, count: usize) {
 fn tick(world: &mut World) -> [f32; 2] {
 	let mut result = [ 0.0, 0.0 ];
 	let filter = Filter::new_2::<Position, Velocity>(world.raw());
-	filter.each(|pos: &Position, vel: &Velocity| {
+	filter.each_2(|_e, pos: &Position, vel: &Velocity| {
 		result[0] += pos.x + vel.x;
 		result[1] += pos.y + vel.y;
 		// println!("Iter: {:?}  {:?}", pos, vel);
