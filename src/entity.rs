@@ -204,6 +204,12 @@ impl Entity {
 		self
 	}
 
+	pub fn override_component<T: Component>(self) -> Self {
+		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
+        unsafe { ecs_add_id(self.world, self.entity, ECS_OVERRIDE | comp_id) };
+		self
+	}
+
 	pub fn add_relation<R: Component, O: Component>(self) -> Self {
 		let relation = WorldInfoCache::get_component_id_for_type::<R>(self.world).expect("Relation type not registered!");
 		let object = WorldInfoCache::get_component_id_for_type::<O>(self.world).expect("Object type not registered!");

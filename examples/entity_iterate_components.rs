@@ -1,7 +1,5 @@
 use flecs::*;
 
-// This file is WIP
-
 #[derive(Copy, Clone, Default, Debug, PartialEq)]
 struct Position {
 	x: f32,

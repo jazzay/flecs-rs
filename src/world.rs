@@ -34,10 +34,11 @@ impl World {
 		Entity::new(self.world, entity)
 	}
 
-	pub fn prefab(&self, name: &str) -> EntityBuilder {
-		unsafe {
-			EntityBuilder::new(self.world)
-				.name(name)
+	pub fn prefab(&self, name: &str) -> Entity {
+		unsafe { 
+			let entity = ecs_new_id(self.world);
+			Entity::new(self.world, entity)
+				.named(name)
 				.add_id(EcsPrefab)
 		}
 	}
