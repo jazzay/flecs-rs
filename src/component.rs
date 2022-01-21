@@ -26,11 +26,12 @@ pub fn register_component_typed<T: 'static>(world: *mut ecs_world_t, name: Optio
 	let comp_id = register_component(world, 
 		ComponentDescriptor { 
 			symbol: name.unwrap_or(symbol).to_owned(), 	// symbol must match name I guess
-			name: name.unwrap_or("").to_owned(), 
+			name: name.unwrap_or(symbol).to_owned(), 
 			custom_id: None,
 			layout 
 	});
 
+    //println!("Registered Component: {} -> {}", symbol, comp_id);
 	WorldInfoCache::register_component_id_for_type_id(world, comp_id, type_id);
 	comp_id
 }

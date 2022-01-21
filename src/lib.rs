@@ -24,12 +24,17 @@ pub use entity::*;
 pub mod filter;
 pub use filter::*;
 
+pub mod id;
+pub use id::*;
+
 pub mod system;
 pub use system::*;
 
 pub mod world;
 pub use world::*;
 
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Impl some flecs funcs that were changed to Macros :(
 
 pub unsafe fn ecs_term_id(it: *const ecs_iter_t, index: i32) -> ecs_id_t {
@@ -72,11 +77,43 @@ pub unsafe fn ecs_iter_column<T: Component>(it: *const ecs_iter_t, index: i32) -
 	ecs_iter_column_w_size(it, size as size_t, index) as *mut T
 }
 
+// Vector helpers
+
+/* Compute the header size of the vector from size & alignment */
+// #define ECS_VECTOR_U(size, alignment) size, ECS_CAST(int16_t, ECS_MAX(ECS_SIZEOF(ecs_vector_t), alignment))
+
+// /* Compute the header size of the vector from a provided compile-time type */
+// #define ECS_VECTOR_T(T) ECS_VECTOR_U(ECS_SIZEOF(T), ECS_ALIGNOF(T))
+
+pub unsafe fn ecs_vector_first<T: Sized>(vector: *const ecs_vector_t) -> *const T {
+	// TODO: Should pull this out in to helpers like above
+	let vector_size = std::mem::size_of::<ecs_vector_t>() as i16;
+	let elem_size = std::mem::size_of::<T>() as i32;
+	let elem_align = std::mem::align_of::<T>() as i16;
+	let offset = vector_size.max(elem_align);
+
+	let first = _ecs_vector_first(vector, elem_size, offset) as *const T;
+	first
+}
+
+
+pub trait AsEcsId {
+	fn id(&self) -> ecs_id_t;
+}
+
+impl AsEcsId for EntityId {
+	fn id(&self) -> ecs_id_t {
+		*self
+	}
+}
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////
 // This is all WIP!
 //
 // TODOs:
 // - audit & fix up ALL string usages. rust -> C must null terminate!
-// - change all get<> component funcs to return Option<>
+// - change all get<> component funcs to return Option<>?
 // - validate that term components were named earlier in chain?
 // - We can only safely store primitives and raw pointer types within 
 //		components currently, due to how the raw memory is inserted/moved
@@ -184,7 +221,8 @@ pub trait Component : 'static { }
 impl<T> Component for T where T: 'static {}
 
 
-
+// TODO - port more C++ tests to Rust!!!
+//
 #[cfg(test)]
 mod tests {
 	use super::*;

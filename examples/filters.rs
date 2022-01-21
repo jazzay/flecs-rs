@@ -12,8 +12,6 @@ struct Velocity {
 	y: f32,
 }
 
-// struct Serializable {}
-
 fn create_some_entities(world: &mut World, count: usize) {
 	for _ in 0..count {
 		world.entity_builder()
@@ -39,7 +37,7 @@ fn main() {
 	println!("Filter example starting...");
 
 	let mut result = [0.0, 0.0];
-	for _ in 0..1000 {
+	for _ in 0..10 {
 		let mut world = World::new();
 		world.component::<Position>();
 		world.component::<Velocity>();

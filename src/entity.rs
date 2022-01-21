@@ -1,16 +1,8 @@
+use std::ptr::slice_from_raw_parts;
+
 use crate::*;
 
 pub type EntityId = ecs_entity_t;
-
-pub trait AsEcsId {
-	fn id(&self) -> ecs_id_t;
-}
-
-impl AsEcsId for EntityId {
-	fn id(&self) -> ecs_id_t {
-		*self
-	}
-}
 
 // TODO - Placeholder for now
 pub struct EntityTypeInfo {
@@ -42,24 +34,18 @@ impl EntityTypeInfo {
 			let type_str = std::ffi::CStr::from_ptr(type_str);
 			println!("type_str: {:?}", type_str);
 
-			// let type_str = type_str.to_str().unwrap();
-			// type_str
-			""
+			let type_str = type_str.to_str().unwrap();
+			type_str
+			// ""
 		}
 	}
 }
-
-// impl From<u64> for EntityId {
-//     fn from(v: u64) -> Self {
-//         v as EntityId
-//     }
-// }
 
 // WIP - This should become like the flecs::entity class
 //
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
 pub struct Entity {
-	entity: EntityId,
+	entity: EntityId,	// todo: rename this id
 	world: *mut ecs_world_t,
 }
 
@@ -82,15 +68,59 @@ impl Entity {
 		self.entity 
 	}
 
+    pub fn is_valid(&self) -> bool {
+        !self.world.is_null() && unsafe { ecs_is_valid(self.world, self.entity) }
+    }
+
+	// from base id type, which don't exist in rust
+    pub fn id_str(&self) -> &str {
+		let id_str = unsafe { ecs_id_str(self.world, self.entity) };
+		if id_str.is_null() {
+			return "";
+		}
+
+		let id_str = unsafe { std::ffi::CStr::from_ptr(id_str) };
+		if let Ok(id_str) = id_str.to_str() {
+			return id_str;
+		}
+
+		// TODO - Flecs is returning invalid utf8 strings in some cases
+		"Error"
+    }
+
 	pub fn name(&self) -> &str {
+		if !self.is_valid() {
+			return "INVALID";
+		}
+
 		let char_ptr = unsafe { ecs_get_name(self.world, self.entity) };
 		if char_ptr.is_null() {
 			return "";
 		}
 
 		let c_str = unsafe { std::ffi::CStr::from_ptr(char_ptr) };
-		let name = c_str.to_str().unwrap();
-		name
+		if let Ok(name) = c_str.to_str() {
+			return name;
+		}
+
+		// TODO - Flecs is returning invalid utf8 strings in some cases
+		// this is due to not having a proper Name assigned generally
+		"Error"
+	}
+
+	pub fn symbol(&self) -> &str {
+		if !self.is_valid() {
+			return "INVALID";
+		}
+
+		let char_ptr = unsafe { ecs_get_symbol(self.world, self.entity) };
+		if char_ptr.is_null() {
+			return "";
+		}
+
+		// We should always have a proper symbol string
+		let c_str = unsafe { std::ffi::CStr::from_ptr(char_ptr) };
+		c_str.to_str().unwrap()
 	}
 
 	pub fn path(&self) -> &str {
@@ -190,6 +220,39 @@ impl Entity {
 
 	pub fn destruct(self) {
 		unsafe { ecs_delete(self.world, self.entity) }; 
+	}
+
+	pub fn each(&self, mut cb: impl FnMut(Id)) {
+		unsafe {
+			let e_type = ecs_get_type(self.world, self.entity);
+			if e_type.is_null() {
+				return;
+			}
+		
+			// let elem_size = std::mem::size_of::<ecs_id_t>() as i32;
+			// let elem_align = std::mem::align_of::<ecs_id_t>() as i16;
+
+			let ids = ecs_vector_first::<ecs_id_t>(e_type);
+			let count = ecs_vector_count(e_type);
+
+			//println!("got {} ids. size: {}, align: {}", count, elem_size, elem_align);
+			let ids = slice_from_raw_parts(ids, count as usize).as_ref().unwrap();
+			
+			for id in ids {
+				//let id = ids[i];
+				let id = Id::new(self.world, *id);
+				cb(id); 
+		
+				// TODO: Handle this soon!
+				// Case is not stored in type, so handle separately
+				// if ((id & ECS_ROLE_MASK) == flecs::Switch) {
+				// 	ent = flecs::id(
+				// 		m_world, flecs::Case | ecs_get_case(
+				// 				m_world, m_id, ent.object().id()));
+				// 	func(ent);
+				// }
+			}
+		}
 	}
 
 	pub fn children(&self, mut cb: impl FnMut(Entity)) {
@@ -333,6 +396,7 @@ impl EntityBuilder {
 	}
 }
 
+// TODO: Finish merging this all into Entity
 // Read only accessor
 #[derive(PartialEq, Eq, Debug)]
 pub struct EntityRef {

@@ -15,7 +15,7 @@ struct Velocity {
 }
 
 // Tag
-struct Human { }
+struct Human {}
 
 // Two tags used to create a pair
 struct Eats { }
@@ -26,39 +26,37 @@ fn iterate_components(e: Entity) {
     println!("{}", e.type_info().to_str());
 
     // 2. To get individual component ids, use entity::each
-    // std::int32_t i = 0;
-    // e.each([&](flecs::id id) {
-    //     std::cout << i++ << ": " << id.str() << "\n";
-    // });
-    // std::cout << "\n";
+    let mut i = 0;
+    e.each(|id| {
+        println!("{}: [{}] {}", i, id.raw(), id.to_str());
+        i += 1;
+    });
+    println!("");
 
     // // 3. we can also inspect and print the ids in our own way. This is a
     // // bit more complicated as we need to handle the edge cases of what can be
     // // encoded in an id, but provides the most flexibility.
-    // i = 0;
-    // e.each([&](flecs::id id) {
-    //     std::cout << i++ << ": ";
+    i = 0;
+    e.each(|id| {
 
-    //     flecs::id role = id.role();
-    //     if (role) {
-    //         std::cout << "role: " << role.role_str() << ", ";
-    //     }
+        if id.has_role() {
+            print!("{}: role: {}, ", i, id.role().role_str());
+        }
 
-    //     if (id.is_pair()) {
-    //         // If id is a pair, extract & print both parts of the pair
-    //         flecs::entity rel = id.relation();
-    //         flecs::entity obj = id.object();
-    //         std::cout << "rel: " << rel.name() << ", " << "obj: " << obj.name();
-    //     } else {
-    //         // Id contains a regular entity. Strip role before printing.
-    //         flecs::entity comp = id.entity();
-    //         std::cout << "entity: " << comp.name();
-    //     }
+        if id.is_pair() {
+            // If id is a pair, extract & print both parts of the pair
+            let rel = id.relation();
+            let obj = id.object();
+            println!("rel: {}, obj: {}", rel.name(), obj.name());
+        } else {
+            // Id contains a regular entity. Strip role before printing.
+            let e = id.entity();
+            println!("{}: entity: {}  [{}]", i, e.name(), e.symbol());
+        }
+        i += 1;
+    });
 
-    //     std::cout << "\n";
-    // });
-
-    // std::cout << "\n\n";
+    println!("");
 }
 
 fn main() {
@@ -79,7 +77,7 @@ fn main() {
         .add::<Human>()
         .add_relation::<Eats, Apples>();
 
-    println!("Bob's components");
+    println!("\nBob's components");
     iterate_components(bob);
 
     // We can use the same function to iterate the components of a component
