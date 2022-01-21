@@ -169,6 +169,11 @@ impl Entity {
         unsafe { ecs_has_id(self.world, self.entity, pair) }
     }
 
+    pub fn has_relation_wildcard<R: AsEcsId>(self, relation: R) -> bool {
+        let pair = unsafe { ecs_make_pair(relation.id(), EcsWildcard) };
+        unsafe { ecs_has_id(self.world, self.entity, pair) }
+    }
+
     pub fn has_child<T: AsEcsId>(self, child: T) -> bool {
         let pair = unsafe { ecs_make_pair(EcsChildOf, child.id()) };
         unsafe { ecs_has_id(self.world, self.entity, pair) }
