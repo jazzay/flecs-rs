@@ -21,17 +21,14 @@ fn main() {
 
 	let item1 = world.prefab("Item1")
 		.set(Position { x: 1.0, y: 2.0 })
-		.set(Velocity { x: 0.0, y: 0.0 })
-		.build();
+		.set(Velocity { x: 0.0, y: 0.0 });
 
-	let e1 = world.entity_builder()
-		.is_a(item1)
-		.build();
+	let e1 = world.entity()
+		.is_a(item1);
 
-	let e2 = world.entity_builder()
+	let e2 = world.entity()
 		.is_a(item1)
-		.set(Velocity { x: 3.0, y: 6.0 })	// Overrides the prefab value
-		.build();
+		.set(Velocity { x: 3.0, y: 6.0 });
 
 	let pos = e1.get::<Position>();
 	println!("E1 - Position = {:?}", pos);

@@ -306,11 +306,6 @@ where
 		return;
 	}
 
-	// For debugging
-	// let it_ref = &*it;
-	// let sys = EntityRef::new(it_ref.system, it_ref.world);
-	// println!("system-trampoline: {}", sys.name());
-
 	let user_data = (*it).ctx;
     let func = &mut *(user_data as *mut F);
     func(it);
@@ -321,13 +316,6 @@ where
     F: FnMut(*mut ecs_iter_t),
 {
     trampoline::<F>
-}
-
-impl Default for ecs_system_desc_t {
-    fn default() -> Self {
-		let desc: ecs_system_desc_t = unsafe { MaybeUninit::zeroed().assume_init() };
-		desc
-    }
 }
 
 

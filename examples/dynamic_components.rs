@@ -18,10 +18,9 @@ fn run_data_example(count: i32) {
 	world.component_dynamic(DATA, Layout::new::<DataValue>());
 
 	for _ in 0..count {
-		world.entity_builder()
+		world.entity()
 			.set(Position::default())
-			.set_dynamic(DATA, &[8; 6])
-			.build();
+			.set_dynamic(DATA, &[8; 6]);
 	}
 
 	world.system().name("DynamicSystem")

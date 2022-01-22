@@ -20,18 +20,16 @@ struct Scale {
 
 fn create_some_entities(world: &mut World, count: usize) {
 	for _ in 0..count {
-		world.entity_builder()
+		world.entity()
 			.set(Position { x: 1.0, y: 2.0 })
-			.set(Velocity { x: 2.0, y: 4.0 })
-			.build();
+			.set(Velocity { x: 2.0, y: 4.0 });
 	}
 
 	for _ in 0..(count / 3) {
-		world.entity_builder()
+		world.entity()
 			.set(Position { x: 1.0, y: 2.0 })
 			.set(Velocity { x: 2.0, y: 4.0 })
-			.set(Scale { x: 1.0, y: 1.0 })
-			.build();
+			.set(Scale { x: 1.0, y: 1.0 });
 	}
 }
 

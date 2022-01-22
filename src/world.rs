@@ -43,10 +43,6 @@ impl World {
 		}
 	}
 
-	pub fn entity_builder(&mut self) -> EntityBuilder {
-		EntityBuilder::new(self.world)
-	}	
-
     pub fn progress(&self, delta_time: f32) -> bool {
         unsafe { ecs_progress(self.world, delta_time) }
     }	

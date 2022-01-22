@@ -107,6 +107,19 @@ impl AsEcsId for EntityId {
 	}
 }
 
+impl Default for ecs_entity_desc_t {
+    fn default() -> Self {
+		let desc: ecs_entity_desc_t = unsafe { MaybeUninit::zeroed().assume_init() };
+		desc
+    }
+}
+
+impl Default for ecs_system_desc_t {
+    fn default() -> Self {
+		let desc: ecs_system_desc_t = unsafe { MaybeUninit::zeroed().assume_init() };
+		desc
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 // This is all WIP!
@@ -262,10 +275,9 @@ mod tests {
 		let vel_e = world.component::<Velocity>();
 		assert_ne!(pos_e, vel_e);
 
-		let entity = world.entity_builder()
+		let entity = world.entity()
 			.set(Position { x: 1.0, y: 2.0 })
-			.set(Velocity { x: 2.0, y: 4.0 })
-			.build();
+			.set(Velocity { x: 2.0, y: 4.0 });
 
 		// something broke here??
 		let pos = world.get::<Position>(entity).unwrap();
