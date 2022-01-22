@@ -31,9 +31,8 @@ impl EntityTypeInfo {
 
 			// for some reason this str is coming back with weird numeric encoding
 			// causing the CStr conversion below to panic. for now return ""
+			// update: That was due to components not being registered with a proper name
 			let type_str = std::ffi::CStr::from_ptr(type_str);
-			println!("type_str: {:?}", type_str);
-
 			let type_str = type_str.to_str().unwrap();
 			type_str
 			// ""

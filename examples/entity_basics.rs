@@ -42,10 +42,9 @@ fn main() {
     // Add a tag after entity is created
     alice.add::<Walking>();
 
-    // TODO: implement the type() api
     // Print all of the components the entity has. This will output:
     //    Position, Walking, (Identifier,Name)
-    // std::cout << "[" << alice.type().str() << "]" << "\n";
+    println!("Alice type = [ {} ]", alice.type_info().to_str());
 
     // Remove tag
     alice.remove::<Walking>();

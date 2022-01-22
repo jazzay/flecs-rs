@@ -90,9 +90,3 @@ mod tests {
     fn flecs_systems() {
 	}
 }
-
-// Next steps:
-//
-// DONE - Get world progress working + multiple systems
-// what other mvp functionality?
-// experiment with dynamic types

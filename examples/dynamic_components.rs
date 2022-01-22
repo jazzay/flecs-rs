@@ -50,5 +50,6 @@ fn main() {
 mod tests {
     #[test]
     fn flecs_dynamic_components() {
+		super::run_data_example(10);
 	}
 }
