@@ -1,6 +1,5 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
-
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
@@ -9,11 +8,16 @@
 #![allow(deref_nullptr)]
 #![allow(improper_ctypes)]
 
-use std::{any::TypeId, collections::HashMap, mem::{MaybeUninit}, sync::Mutex};
+use std::{any::TypeId, mem::{MaybeUninit} };
 
-// include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+// We generate bindings to an actual source file so that we get better IDE integration
 mod bindings;
 pub use bindings::*;
+
+mod binding_util;	// Internal only
+pub(crate) use binding_util::*;
+
+mod cache;	// Internal only
 
 mod component;
 pub use component::*;
@@ -33,94 +37,7 @@ pub use system::*;
 pub mod world;
 pub use world::*;
 
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Impl some flecs funcs that were changed to Macros :(
-
-pub unsafe fn ecs_term_id(it: *const ecs_iter_t, index: i32) -> ecs_id_t {
-	assert!(index > 0);		// TODO: later add max check as well
-	let index = (index - 1) as usize;
-	let term_id = (*it).ids.add(index);
-	*term_id
-}
-
-pub unsafe fn ecs_term_source(it: *const ecs_iter_t, index: i32) -> ecs_entity_t {
-	assert!(index > 0);		// TODO: later add max check as well
-    if (*it).subjects.is_null() {
-		0
-	} else {
-		let index = (index - 1) as usize;
-		*((*it).subjects.add(index))
-	} 
-}
-
-pub unsafe fn ecs_term_size(it: *const ecs_iter_t, index: i32) -> size_t {
-	assert!(index > 0);		// TODO: later add max check as well
-    *((*it).sizes.add((index - 1) as usize)) as size_t
-}
-
-pub unsafe fn ecs_term_is_owned(it: *const ecs_iter_t, index: i32) -> bool {
-	assert!(index > 0);		// TODO: later add max check as well
-	let index = (index - 1) as usize;
-    (*it).subjects.is_null() || *((*it).subjects.add(index)) == 0
-}
-
-// This access query/filter term component data
-pub unsafe fn ecs_term<T: Component>(it: *const ecs_iter_t, index: i32) -> *mut T {
-	let size = std::mem::size_of::<T>();
-	ecs_term_w_size(it, size as size_t, index) as *mut T
-}
-
-// This accesses all table columns for a matched archetype
-pub unsafe fn ecs_iter_column<T: Component>(it: *const ecs_iter_t, index: i32) -> *mut T {
-	let size = std::mem::size_of::<T>();
-	ecs_iter_column_w_size(it, size as size_t, index) as *mut T
-}
-
-// Vector helpers
-
-/* Compute the header size of the vector from size & alignment */
-// #define ECS_VECTOR_U(size, alignment) size, ECS_CAST(int16_t, ECS_MAX(ECS_SIZEOF(ecs_vector_t), alignment))
-
-// /* Compute the header size of the vector from a provided compile-time type */
-// #define ECS_VECTOR_T(T) ECS_VECTOR_U(ECS_SIZEOF(T), ECS_ALIGNOF(T))
-
-pub unsafe fn ecs_vector_first<T: Sized>(vector: *const ecs_vector_t) -> *const T {
-	// TODO: Should pull this out in to helpers like above
-	let vector_size = std::mem::size_of::<ecs_vector_t>() as i16;
-	let elem_size = std::mem::size_of::<T>() as i32;
-	let elem_align = std::mem::align_of::<T>() as i16;
-	let offset = vector_size.max(elem_align);
-
-	let first = _ecs_vector_first(vector, elem_size, offset) as *const T;
-	first
-}
-
-
-pub trait AsEcsId {
-	fn id(&self) -> ecs_id_t;
-}
-
-impl AsEcsId for EntityId {
-	fn id(&self) -> ecs_id_t {
-		*self
-	}
-}
-
-impl Default for ecs_entity_desc_t {
-    fn default() -> Self {
-		let desc: ecs_entity_desc_t = unsafe { MaybeUninit::zeroed().assume_init() };
-		desc
-    }
-}
-
-impl Default for ecs_system_desc_t {
-    fn default() -> Self {
-		let desc: ecs_system_desc_t = unsafe { MaybeUninit::zeroed().assume_init() };
-		desc
-    }
-}
-
+// Move this to the readme
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 // This is all WIP!
 //
@@ -134,104 +51,37 @@ impl Default for ecs_system_desc_t {
 //		This could become a bit of a deal breaker for idiomatic rust
 // 		component storage if not solved
 
-// TODO: make this better. 
-// 	possibly we could use world->set_context to hold our custom data container
-// 	associated to each world, then inside there cache the comp ids, etc
-// 	need to watch for mutable vs readonly worlds
-//
-// PROBLEM: flecs dupes the world for execution within systems to prevent
-// writing to the real world, all mutable operations are deferred. However
-// this causes multiple worlds to exist within only the root/real world actually
-// having the component ID caches. 
-// SOLVED, by the flecs actual world api - ecs_get_world(m_world)
-//
-// Good resource here:
-// https://internals.rust-lang.org/t/generic-type-dependent-static-data/8602
-
-// This might help
-// https://docs.rs/generic_static/0.2.0/generic_static/
-// Issue with statics however is then we don't get per world comp ids
-// and registering is done on the world... we would have to follow the 
-// C++ impl and detect that component was already registered prior and
-// assume that same ID again...
-
-lazy_static::lazy_static! {
-    static ref WORLD_INFOS: Mutex<HashMap<WorldKey, WorldInfoCache>> = {
-        let m = HashMap::new();
-		Mutex::new(m)
-    };
-}
-
-type WorldKey = u64;	//*mut ecs_world_t;
-
-#[derive(Copy, Clone, Debug)]
-struct ComponentInfo {
-	id: u64,
-	size: usize,
-}
-
-struct WorldInfoCache
-{
-	component_typeid_map: HashMap<TypeId, u64>,
-	component_symbol_map: HashMap<&'static str, ComponentInfo>,
-}
-
-impl WorldInfoCache {
-	pub(crate) fn insert(world: *mut ecs_world_t) {
-		let cache = WorldInfoCache {
-			component_typeid_map: HashMap::new(),
-			component_symbol_map: HashMap::new(),
-		};
-
-		let world_key = Self::key_for_world(world);
-		let mut m = WORLD_INFOS.lock().unwrap();
-		m.insert(world_key, cache);
-	}
-
-	fn key_for_world(world: *mut ecs_world_t) -> u64 {
-		assert!(world != std::ptr::null_mut());
-
-		// we have to use the actual world in order lookup conponent data
-		let actual_world = unsafe { ecs_get_world(world as *const ecs_poly_t) };
-		actual_world as u64
-	}
-
-	pub fn get_component_id_for_type<T: Component>(world: *mut ecs_world_t) -> Option<ecs_entity_t> {
-		let world_key = Self::key_for_world(world);
-		let m = WORLD_INFOS.lock().unwrap();
-		let cache = m.get(&world_key).unwrap();	//.clone();	
-
-		let type_id = TypeId::of::<T>();
-		let comp_id = cache.component_typeid_map.get(&type_id).map(|v| *v);	
-		comp_id
-	}
-
-	pub fn register_component_id_for_type_id(world: *mut ecs_world_t, comp_id: ecs_entity_t, type_id: TypeId) {
-		let world_key = Self::key_for_world(world);
-		let mut m = WORLD_INFOS.lock().unwrap();
-		let cache = m.get_mut(&world_key).unwrap();	//.clone();	
-
-		cache.component_typeid_map.insert(type_id, comp_id);
-	}
-
-	pub fn get_component_id_for_symbol(world: *mut ecs_world_t, symbol: &'static str) -> Option<ComponentInfo> {
-		let world_key = Self::key_for_world(world);
-		let m = WORLD_INFOS.lock().unwrap();
-		let cache = m.get(&world_key).unwrap();
-		cache.component_symbol_map.get(symbol).map(|v| *v)
-	}
-
-	pub fn register_component_id_for_symbol(world: *mut ecs_world_t, comp_id: ecs_entity_t, symbol: &'static str, size: usize) {
-		let world_key = Self::key_for_world(world);
-		let mut m = WORLD_INFOS.lock().unwrap();
-		let cache = m.get_mut(&world_key).unwrap();
-		cache.component_symbol_map.insert(symbol, ComponentInfo { id: comp_id, size });
-	}	
-}	
-
 
 pub trait Component : 'static { }
 impl<T> Component for T where T: 'static {}
+
+
+pub trait AsEcsId {
+	fn id(&self) -> ecs_id_t;
+}
+
+impl AsEcsId for EntityId {
+	fn id(&self) -> ecs_id_t {
+		*self
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////
+// C Struct initializer Defaults
+//
+impl Default for ecs_entity_desc_t {
+    fn default() -> Self {
+		let desc: ecs_entity_desc_t = unsafe { MaybeUninit::zeroed().assume_init() };
+		desc
+    }
+}
+
+impl Default for ecs_system_desc_t {
+    fn default() -> Self {
+		let desc: ecs_system_desc_t = unsafe { MaybeUninit::zeroed().assume_init() };
+		desc
+    }
+}
 
 
 // TODO - port more C++ tests to Rust!!!

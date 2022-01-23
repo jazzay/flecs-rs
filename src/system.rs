@@ -1,7 +1,7 @@
 use std::{ffi::c_void};
 
-use super::*;
-
+use crate::*;
+use crate::cache::WorldInfoCache;
 
 lazy_static::lazy_static! {
     pub(crate) static ref NAME_SEP: std::ffi::CString = {
@@ -254,7 +254,7 @@ impl Iter {
 
         let mut count = self.count();
 
-        let is_shared = unsafe { !ecs_term_is_owned(self.it, index) };
+        let is_shared = unsafe { !binding_util::ecs_term_is_owned(self.it, index) };
 
         /* If a shared column is retrieved with 'column', there will only be a
          * single value. Ensure that the application does not accidentally read
@@ -272,7 +272,7 @@ impl Iter {
 
     pub fn get_term_dynamic(&self, index: i32) -> ColumnDynamic {
         let mut count = self.count();
-        let is_shared = unsafe { !ecs_term_is_owned(self.it, index) };
+        let is_shared = unsafe { !binding_util::ecs_term_is_owned(self.it, index) };
         if is_shared {
             count = 1;
         }

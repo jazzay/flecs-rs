@@ -1,6 +1,7 @@
 use std::alloc::Layout;
 
 use crate::*;
+use crate::cache::WorldInfoCache;
 
 pub struct World {
 	world: *mut ecs_world_t,

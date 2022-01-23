@@ -100,16 +100,6 @@ impl Id {
 
     pub fn role_str(&self) -> &str {
 		let role_str = unsafe { ecs_role_str(self.id & (ECS_ROLE_MASK as u64)) };
-		if role_str.is_null() {
-			return "";
-		}
-
-		let role_str = unsafe { std::ffi::CStr::from_ptr(role_str) };
-		if let Ok(role_str) = role_str.to_str() {
-			return role_str;
-		}
-
-        // TODO: How should we best handle this?
-        "Error"
+		unsafe { flecs_str_to_rust_str(role_str) }
     }
 }

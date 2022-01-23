@@ -2,24 +2,16 @@ use std::env;
 use std::path::PathBuf;
 
 fn main() {
-	// JJ - don't think we need this
-    // Tell cargo to tell rustc to link the system bzip2 shared library.
-    // println!("cargo:rustc-link-lib=bz2");
-
     // Tell cargo to invalidate the built crate whenever the sources change
     println!("cargo:rerun-if-changed=flecs.h");
     println!("cargo:rerun-if-changed=flecs.c");
 
-    // The bindgen::Builder is the main entry point
-    // to bindgen, and lets you build up options for
-    // the resulting bindings.
     let bindings = bindgen::Builder::default()
         // The input header we would like to generate
         // bindings for.
         .header("flecs.h")
 		.generate_comments(false)
 		.layout_tests(false)
-		//.rustfmt_bindings(true)
         // Tell cargo to invalidate the built crate whenever any of the
         // included header files changed.
         .parse_callbacks(Box::new(bindgen::CargoCallbacks))
@@ -28,13 +20,13 @@ fn main() {
         // Unwrap the Result and panic on failure.
         .expect("Unable to generate bindings");
 
-    // Write the bindings to the $OUT_DIR/bindings.rs file.
-    // let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
+    // We generate bindings to an actual source file so that we get better IDE integration
     let out_path = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     bindings
         .write_to_file(out_path.join("src/bindings.rs"))
         .expect("Couldn't write bindings!");
 
+    // Compile flecs C right into our Rust crate
 	cc::Build::new()
 		.file("flecs.c")
 		.compile("flecs");		

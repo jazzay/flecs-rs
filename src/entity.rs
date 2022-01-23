@@ -1,6 +1,7 @@
 use std::ptr::slice_from_raw_parts;
 
 use crate::*;
+use crate::cache::WorldInfoCache;
 
 pub type EntityId = ecs_entity_t;
 

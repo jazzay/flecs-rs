@@ -1,4 +1,5 @@
-use super::*;
+use crate::*;
+use crate::cache::WorldInfoCache;
 
 fn ecs_term<T>(it: *const ecs_iter_t, index: i32) -> *const T {
 	let size = std::mem::size_of::<T>();

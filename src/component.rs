@@ -1,6 +1,7 @@
 use std::alloc::Layout;
 
 use crate::*;
+use crate::cache::WorldInfoCache;
 
 // This is all WIP!
 
