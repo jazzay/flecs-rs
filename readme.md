@@ -18,11 +18,11 @@ struct Position {
 struct Walking { }
 
 fn main() {
-	let mut world = World::new();
+    let mut world = World::new();
 
     // We have to manually register all components
-	world.component::<Position>();
-	world.component::<Walking>();
+    world.component::<Position>();
+    world.component::<Walking>();
 
     // Create an entity with name Bob
     let bob = world.entity().named("Bob")
