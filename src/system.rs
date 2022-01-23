@@ -307,7 +307,7 @@ where
     func(it);
 }
 
-pub fn get_trampoline<F>(_closure: &F) -> SystemCallback
+fn get_trampoline<F>(_closure: &F) -> SystemCallback
 where
     F: FnMut(*mut ecs_iter_t),
 {

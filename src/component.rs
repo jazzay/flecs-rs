@@ -10,7 +10,7 @@ use crate::cache::WorldInfoCache;
 //		for example Position {} -> 'module.Position'
 //		then plugins could lookup/cache the runtime id via those names
 
-pub fn register_component_typed<T: 'static>(world: *mut ecs_world_t, name: Option<&str>) -> EntityId {
+pub(crate) fn register_component_typed<T: 'static>(world: *mut ecs_world_t, name: Option<&str>) -> EntityId {
 	// see if we already cached it
 	if let Some(comp_id) = WorldInfoCache::get_component_id_for_type::<T>(world) {
 		return comp_id;
@@ -32,7 +32,7 @@ pub fn register_component_typed<T: 'static>(world: *mut ecs_world_t, name: Optio
 	comp_id
 }
 
-pub fn register_component_dynamic(world: *mut ecs_world_t, symbol: &'static str, name: Option<&'static str>, layout: Layout) -> EntityId {
+pub(crate) fn register_component_dynamic(world: *mut ecs_world_t, symbol: &'static str, name: Option<&'static str>, layout: Layout) -> EntityId {
 	// see if we already cached it
 	if let Some(comp_info) = WorldInfoCache::get_component_id_for_symbol(world, symbol) {
 		return comp_info.id;
@@ -65,14 +65,14 @@ pub(crate) fn get_component_info(world: *mut ecs_world_t, comp_e: ecs_entity_t) 
 }
 
 #[derive(Debug)]
-pub struct ComponentDescriptor {
+pub(crate) struct ComponentDescriptor {
 	pub symbol: String, 
 	pub name: String, 
 	pub custom_id: Option<u64>,
 	pub layout: std::alloc::Layout
 }
 
-pub fn register_component(world: *mut ecs_world_t, desc: ComponentDescriptor) -> ecs_entity_t {
+pub(crate) fn register_component(world: *mut ecs_world_t, desc: ComponentDescriptor) -> ecs_entity_t {
 	// println!("register_component - {:?}", desc);
 
 	let mut e_desc: ecs_entity_desc_t = unsafe { MaybeUninit::zeroed().assume_init() };

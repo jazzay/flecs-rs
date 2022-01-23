@@ -11,7 +11,12 @@
 use std::{any::TypeId, mem::{MaybeUninit} };
 
 // We generate bindings to an actual source file so that we get better IDE integration
+
+// For now do not export Docs for all the Raw bindings.
+// We will need to expose types that are part of the Rust api at some point
+#[doc(hidden)]
 mod bindings;
+#[doc(hidden)]
 pub use bindings::*;
 
 mod binding_util;	// Internal only
@@ -20,7 +25,7 @@ pub(crate) use binding_util::*;
 mod cache;	// Internal only
 
 mod component;
-pub use component::*;
+pub(crate) use component::*;
 
 mod entity;
 pub use entity::*;

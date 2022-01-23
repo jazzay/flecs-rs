@@ -9,6 +9,7 @@ pub struct World {
 }
 
 impl World {
+	/// Creates a new Flecs World instance
 	pub fn new() -> Self {
 		let world = unsafe { ecs_init() };
 		WorldInfoCache::insert(world);
