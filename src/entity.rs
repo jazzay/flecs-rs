@@ -29,14 +29,7 @@ impl EntityTypeInfo {
 			let w = ecs_get_world(self.entity.world as *const ecs_poly_t);
 			let t = ecs_table_get_type(self.table);
 			let type_str = ecs_type_str(w, t);
-
-			// for some reason this str is coming back with weird numeric encoding
-			// causing the CStr conversion below to panic. for now return ""
-			// update: That was due to components not being registered with a proper name
-			let type_str = std::ffi::CStr::from_ptr(type_str);
-			let type_str = type_str.to_str().unwrap();
-			type_str
-			// ""
+			flecs_to_rust_str(type_str)
 		}
 	}
 }
@@ -75,17 +68,7 @@ impl Entity {
 	// from base id type, which don't exist in rust
     pub fn id_str(&self) -> &str {
 		let id_str = unsafe { ecs_id_str(self.world, self.entity) };
-		if id_str.is_null() {
-			return "";
-		}
-
-		let id_str = unsafe { std::ffi::CStr::from_ptr(id_str) };
-		if let Ok(id_str) = id_str.to_str() {
-			return id_str;
-		}
-
-		// TODO - Flecs is returning invalid utf8 strings in some cases
-		"Error"
+		unsafe { flecs_to_rust_str(id_str) }
     }
 
 	pub fn name(&self) -> &str {
@@ -93,19 +76,8 @@ impl Entity {
 			return "INVALID";
 		}
 
-		let char_ptr = unsafe { ecs_get_name(self.world, self.entity) };
-		if char_ptr.is_null() {
-			return "";
-		}
-
-		let c_str = unsafe { std::ffi::CStr::from_ptr(char_ptr) };
-		if let Ok(name) = c_str.to_str() {
-			return name;
-		}
-
-		// TODO - Flecs is returning invalid utf8 strings in some cases
-		// this is due to not having a proper Name assigned generally
-		"Error"
+		let name_str = unsafe { ecs_get_name(self.world, self.entity) };
+		unsafe { flecs_to_rust_str(name_str) }
 	}
 
 	pub fn symbol(&self) -> &str {
@@ -113,26 +85,14 @@ impl Entity {
 			return "INVALID";
 		}
 
-		let char_ptr = unsafe { ecs_get_symbol(self.world, self.entity) };
-		if char_ptr.is_null() {
-			return "";
-		}
-
-		// We should always have a proper symbol string
-		let c_str = unsafe { std::ffi::CStr::from_ptr(char_ptr) };
-		c_str.to_str().unwrap()
+		let symbol_str = unsafe { ecs_get_symbol(self.world, self.entity) };
+		unsafe { flecs_to_rust_str(symbol_str) }
 	}
 
 	pub fn path(&self) -> &str {
 		let sep = NAME_SEP.as_ptr() as *const i8;	// for now only support :: as sep
-		let path_ptr = unsafe { ecs_get_path_w_sep(self.world, 0, self.entity, sep, sep) };
-		if path_ptr.is_null() {
-			return "";
-		}
-
-		let c_str = unsafe { std::ffi::CStr::from_ptr(path_ptr) };
-		let path = c_str.to_str().unwrap();
-		path
+		let path_str = unsafe { ecs_get_path_w_sep(self.world, 0, self.entity, sep, sep) };
+		unsafe { flecs_to_rust_str(path_str) }
 	}
 
 	pub fn type_info(&self) -> EntityTypeInfo {

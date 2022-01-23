@@ -4,5 +4,5 @@ Cargo.lock
 .vscode
 flamegraph.svg
 
-# don't bother submitting bindings for now
+# don't bother submitting bindings file
 /src/bindings.rs

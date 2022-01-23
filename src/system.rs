@@ -3,13 +3,6 @@ use std::{ffi::c_void};
 use crate::*;
 use crate::cache::WorldInfoCache;
 
-lazy_static::lazy_static! {
-    pub(crate) static ref NAME_SEP: std::ffi::CString = {
-		let sep = std::ffi::CString::new("::").unwrap();
-		sep
-    };
-}
-
 pub struct System {
 	world: *mut ecs_world_t,
 	id: ecs_entity_t,
@@ -182,6 +175,9 @@ impl SystemBuilder {
 	// }
 }
 
+
+// TODO: Move this to another file now that it's used for Queries, etc
+//
 pub struct Iter {
 	it: *mut ecs_iter_t,
 	begin: usize,
@@ -234,7 +230,6 @@ impl Iter {
         Self::get_term::<A>(self, index)
     }
 
-    // template <typename T, typename A = actual_type_t<T>>
     fn get_term<T: Component>(&self, index: i32) -> Column<T> {
 		// validate that types match. could avoid this in Release builds perhaps to get max perf
         let term_id = unsafe { ecs_term_id(self.it, index) };

@@ -31,17 +31,19 @@ pub use filter::*;
 pub mod id;
 pub use id::*;
 
+// pub mod iter;
+// pub use iter::*;
+
 pub mod system;
 pub use system::*;
 
 pub mod world;
 pub use world::*;
 
-// Move this to the readme
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
-// This is all WIP!
+// This Rust binding for flecs is a WIP!!!
 //
-// TODOs:
+// Possible TODOs:
 // - audit & fix up ALL string usages. rust -> C must null terminate!
 // - change all get<> component funcs to return Option<>?
 // - validate that term components were named earlier in chain?
@@ -50,7 +52,7 @@ pub use world::*;
 //		need to look in to hooking the lifecycle support to rust, etc
 //		This could become a bit of a deal breaker for idiomatic rust
 // 		component storage if not solved
-
+// - Implement proper Rusty Query / System APIs that use Tuple generics
 
 pub trait Component : 'static { }
 impl<T> Component for T where T: 'static {}
@@ -151,7 +153,7 @@ mod tests {
 	}
 
     #[test]
-    fn flecs_raw_calls() {
+    fn flecs_raw_binding_calls() {
 		let world = unsafe { ecs_init() };
 
 		let entity = unsafe { ecs_new_id(world) };

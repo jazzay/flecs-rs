@@ -85,21 +85,11 @@ impl Id {
 	// from base id type, which don't exist in rust
     pub fn to_str(&self) -> &str {
 		let id_str = unsafe { ecs_id_str(self.world, self.id) };
-		if id_str.is_null() {
-			return "";
-		}
-
-		let id_str = unsafe { std::ffi::CStr::from_ptr(id_str) };
-		if let Ok(id_str) = id_str.to_str() {
-			return id_str;
-		}
-
-        // TODO: How should we best handle this?
-        "Error"
+		unsafe { flecs_to_rust_str(id_str) }
     }
 
     pub fn role_str(&self) -> &str {
 		let role_str = unsafe { ecs_role_str(self.id & (ECS_ROLE_MASK as u64)) };
-		unsafe { flecs_str_to_rust_str(role_str) }
+		unsafe { flecs_to_rust_str(role_str) }
     }
 }

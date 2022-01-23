@@ -71,11 +71,8 @@ impl World {
 	}
 
 	pub fn name(&self, entity: Entity) -> &str {
-		let char_ptr = unsafe { ecs_get_name(self.world, entity.raw()) };
-		let c_str = unsafe { std::ffi::CStr::from_ptr(char_ptr) };
-		let name = c_str.to_str().unwrap();
-		println!("name(): {}", name);
-		name
+		let name_str = unsafe { ecs_get_name(self.world, entity.raw()) };
+		unsafe { flecs_to_rust_str(name_str) }
 	}
 
 	/// Set a singleton component
