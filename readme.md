@@ -10,8 +10,8 @@ use flecs::*;
 
 #[derive(Default, Debug, PartialEq)]
 struct Position {
-	x: f32,
-	y: f32,
+    x: f32,
+    y: f32,
 }
 
 #[derive(Default, Debug, PartialEq)]
