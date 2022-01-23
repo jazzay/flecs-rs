@@ -14,8 +14,31 @@ bindgen = "0.59.1"
 cc = "1.0.70"
 
 [[example]]
+name="entity_basics"
+path = "examples/entity/basics.rs"
+
+[[example]]
+name="entity_hierarchy"
+path = "examples/entity/hierarchy.rs"
+
+[[example]]
+name="entity_iterate_components"
+path = "examples/entity/iterate_components.rs"
+
+[[example]]
+name="prefabs"
+path = "examples/entity/prefabs.rs"
+
+[[example]]
+name="relations"
+path = "examples/entity/relations.rs"
+
+[[example]]
 name="dynamic_components"
 test = true
+
+[[example]]
+name="hello_world"
 
 [[example]]
 name="filters"

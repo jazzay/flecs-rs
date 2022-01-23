@@ -177,6 +177,7 @@ impl SystemBuilder {
 
 
 // TODO: Move this to another file now that it's used for Queries, etc
+// 	I tried to do it at one point but ran in to a Rust compiler crash :(
 //
 pub struct Iter {
 	it: *mut ecs_iter_t,
@@ -314,7 +315,7 @@ where
 }
 
 
-// Move to another file
+// TODO: Move to another file
 
 pub struct Column<T: Component> {
     array: *mut T, 
