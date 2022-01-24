@@ -30,19 +30,10 @@ fn main() {
 	world.component::<Eats>();
 	world.component::<Apples>();
 
-	world.system()
+	world.system::<(Position, Velocity)>()
 		.signature("Position, Velocity")
-		.iter(|it| {
-            println!("system_one: entities = {}", it.count());
-
-            let positions = it.term::<Position>(1);
-            let vels = it.term::<Velocity>(2);
-        
-            for index in 0..it.count() {
-                let pos = positions.get(index);
-                let vel = vels.get(index);
-                println!("   {:?}, {:?}", pos, vel);
-            }        
+		.each(|e, (pos, vel)| {
+            println!("  {}: {:?}, {:?}", e.name(), pos, vel);
         });
 
     // Register system

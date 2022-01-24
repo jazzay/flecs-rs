@@ -19,63 +19,68 @@ struct Scale {
 }
 
 fn create_some_entities(world: &mut World, count: usize) {
-	for _ in 0..count {
-		world.entity()
+	for i in 0..count {
+		world.entity().named(&format!("A-{}", i))
 			.set(Position { x: 1.0, y: 2.0 })
 			.set(Velocity { x: 2.0, y: 4.0 });
 	}
 
-	for _ in 0..(count / 3) {
-		world.entity()
+	for i in 0..(count / 3) {
+		world.entity().named(&format!("B-{}", i))
 			.set(Position { x: 1.0, y: 2.0 })
 			.set(Velocity { x: 2.0, y: 4.0 })
 			.set(Scale { x: 1.0, y: 1.0 });
 	}
 }
 
-fn system_one(it: &Iter) {
-	println!("system_one: entities = {}", it.count());
+// Iter functions not supported for now
+// fn system_one(it: &Iter) {
+// 	println!("system_one: entities = {}", it.count());
 
-	let positions = it.term::<Position>(1);
-	let vels = it.term::<Velocity>(2);
+// 	let positions = it.term::<Position>(1);
+// 	let vels = it.term::<Velocity>(2);
 
-	for index in 0..it.count() {
-		let pos = positions.get(index);
-		let vel = vels.get(index);
-		println!("   {:?}, {:?}", pos, vel);
-	}
-}
+// 	for index in 0..it.count() {
+// 		let pos = positions.get(index);
+// 		let vel = vels.get(index);
+// 		println!("   {:?}, {:?}", pos, vel);
+// 	}
+// }
 
-fn system_two(it: &Iter) {
-	println!("system_two: entities = {}", it.count());
-
-	let positions = it.term::<Position>(1);
-	let scales = it.term::<Scale>(2);
-
-	for index in 0..it.count() {
-		let pos = positions.get(index);
-		let s = scales.get(index);
-		println!("   {:?}, {:?}", pos, s);
-	}
+fn system_one(e: Entity, (pos, vel): (&mut Position, &mut Velocity)) {
+	pos.x += vel.x;
+	pos.y += vel.y;
+	println!("Sys1 - {}: {:?}, {:?}", e.name(), pos, vel);
 }
 
 fn main() {
 	println!("Systems example starting...");
 
 	let mut world = World::new();
-	world.component_named::<Position>("Position");
-	world.component_named::<Velocity>("Velocity");
-	world.component_named::<Scale>("Scale");
+	world.component::<Position>();
+	world.component::<Velocity>();
+	world.component::<Scale>();
 
 	create_some_entities(&mut world, 3);
 
-	world.system().name("system_one")
+	// Can wire a function into a system
+	world.system::<(Position, Velocity)>()
+		.named("system_one")
 		.signature("Position, Velocity, !Scale")
-		.iter(system_one);
+		.each_mut(system_one);
 
-	world.system().name("system_two")
+	// Or pass a closure directly
+	world.system::<(Position, Scale)>()
+		.named("system_two")
 		.signature("Position, Scale")
-		.iter(system_two);
+		.each_mut(|e, (pos, s)| {
+			println!("Sys2 - {}: {:?}, {:?}", e.name(), pos, s);
+		});
+
+	// Don't support 0, 1 comp systems right now
+	// world.system::<()>().name("system_two")
+	// 	.signature("Position, Scale")
+	// 	.iter(system_two);
 
 	for _ in 0..5 {
 		world.progress(0.033);

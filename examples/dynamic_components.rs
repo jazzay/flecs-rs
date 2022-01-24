@@ -23,7 +23,8 @@ fn run_data_example(count: i32) {
 			.set_dynamic(DATA, &[8; 6]);
 	}
 
-	world.system().name("DynamicSystem")
+	/* Dynamic component systems broken with latest API changes
+	world.system::<(Position, _)>().named("DynamicSystem")
 		.signature("Position, test.Data")
 		.iter(|it| {
 			let positions = it.term::<Position>(1);
@@ -37,7 +38,8 @@ fn run_data_example(count: i32) {
 			}
 		
 		});
-
+	*/
+	
 	world.progress(0.0333);
 }
 

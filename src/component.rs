@@ -17,12 +17,24 @@ pub(crate) fn register_component_typed<T: 'static>(world: *mut ecs_world_t, name
 	}
 
 	let type_id = TypeId::of::<T>();
-	let symbol = std::any::type_name::<T>();
 	let layout = std::alloc::Layout::new::<T>();
+	let symbol = std::any::type_name::<T>().to_owned();
+
+	// Need to figure out best way to 'Auto-Name' components based on the rust type name.
+	// By default we would want the struct name only so that queries, etc match
+	//
+	let name = if let Some(name) = name {
+		name.to_owned()
+	} else {
+		// Note :: in rust is the module sep, while in flecs it is path sep (parenting)
+		let s = symbol.replace("::", ".");
+		s.split(".").last().unwrap().to_owned()
+	};
+
 	let comp_id = register_component(world, 
 		ComponentDescriptor { 
-			symbol: name.unwrap_or(symbol).to_owned(), 	// symbol must match name I guess
-			name: name.unwrap_or(symbol).to_owned(), 
+			symbol,
+			name, 
 			custom_id: None,
 			layout 
 	});

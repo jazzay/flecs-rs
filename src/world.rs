@@ -195,24 +195,23 @@ impl World {
 		register_component_dynamic(self.world, symbol, Some(name), layout)
 	}
 
-	pub fn system(&self) -> SystemBuilder {
-		let system = SystemBuilder::new(self.world);
-		system
-	}
+	pub fn system<'a, G: ComponentGroup<'a>>(&'a self) -> SystemBuilder<'a, G> {
+		let sb: SystemBuilder<'a, G> = SystemBuilder::new(self);
+        sb
+    }	
 
-	// Iteration
+	pub fn filter<'a, G: ComponentGroup<'a>>(&'a self) -> FilterGroup<'a, G> {
+		let filter: FilterGroup<'a, G> = FilterGroup::new(self);
+        filter
+    }	
 
+	// Iterate through all entities matching 1 component
 	pub fn each1<A: Component>(&self, mut cb: impl FnMut(Entity, &A)) {
 		let filter = Filter::new_1::<A>(self.raw());
 		filter.each_1(|e: Entity, a: &A| {
 			cb(e, a);
 		});
 	}
-
-	pub fn filter<'a, G: ComponentGroup<'a>>(&'a self) -> FilterGroup<'a, G> {
-		let filter: FilterGroup<'a, G> = FilterGroup::new(self);
-        filter
-    }	
 
 	// Rust compiler will not let is use these short forms, perhaps we can solve the errors
 	//
@@ -225,6 +224,42 @@ impl World {
 	// 	let filter: FilterGroup<'a, G> = FilterGroup::new(self);
 	// 	filter.each_mut(cb);
     // }	
+
+	// But we can easily create these few 'overloads' in terms of component groups. 
+	// TODO: Possibly a macro could generate these
+
+	// Iterate through all entities matching 2 components
+	pub fn each_2<'a, A: Component, B: Component>(&'a self, mut cb: impl FnMut(Entity, &A, &B)) {
+		let filter: FilterGroup<'a, (A, B)> = FilterGroup::new(self);
+		filter.each(|e: Entity, (a, b)| {
+			cb(e, a, b);
+		});
+	}
+
+	// Iterate through all entities matching 3 components
+	pub fn each_3<'a, A: Component, B: Component, C: Component>(&'a self, mut cb: impl FnMut(Entity, &A, &B, &C)) {
+		let filter: FilterGroup<'a, (A, B, C)> = FilterGroup::new(self);
+		filter.each(|e: Entity, (a, b, c)| {
+			cb(e, a, b, c);
+		});
+	}
+
+	// Iterate through all entities matching 2 components
+	pub fn each_mut_2<'a, A: Component, B: Component>(&'a self, mut cb: impl FnMut(Entity, &mut A, &mut B)) {
+		let filter: FilterGroup<'a, (A, B)> = FilterGroup::new(self);
+		filter.each_mut(|e: Entity, (a, b)| {
+			cb(e, a, b);
+		});
+	}
+
+	// Iterate through all entities matching 3 components
+	pub fn each_mut_3<'a, A: Component, B: Component, C: Component>(&'a self, mut cb: impl FnMut(Entity, &mut A, &mut B, &mut C)) {
+		let filter: FilterGroup<'a, (A, B, C)> = FilterGroup::new(self);
+		filter.each_mut(|e: Entity, (a, b, c)| {
+			cb(e, a, b, c);
+		});
+	}
+
 }
 
 impl Drop for World {

@@ -47,7 +47,8 @@ impl System {
 
 }
 
-pub struct SystemBuilder {
+// We will merge this into the new SystemBuilder at some point to support iter() impls
+pub struct SystemBuilderOld {
 	world: *mut ecs_world_t,
 	desc: ecs_system_desc_t,
 
@@ -56,7 +57,7 @@ pub struct SystemBuilder {
 	signature_temp: String,	
 }
 
-impl SystemBuilder {
+impl SystemBuilderOld {
 	pub(crate) fn new(world: *mut ecs_world_t) -> Self {
 		let mut desc = ecs_system_desc_t::default();
 
@@ -66,7 +67,7 @@ impl SystemBuilder {
 		// m_desc.query.filter.expr = expr;
 		// this->populate_filter_from_pack();
 
-		SystemBuilder {
+		SystemBuilderOld {
 			world,
 			desc,
 			name_temp: "".to_owned(),
@@ -307,6 +308,8 @@ where
     func(it);
 }
 
+// we have to wrap system callback functions in a trampoline
+// so that we can access it again within the C callback handler
 fn get_trampoline<F>(_closure: &F) -> SystemCallback
 where
     F: FnMut(*mut ecs_iter_t),
@@ -379,5 +382,165 @@ impl ColumnDynamic {
 			let len = self.element_size;
 			std::slice::from_raw_parts_mut(ptr, len)
 		}
+	}
+}
+
+
+/// V2  with typed component groups
+/// 
+
+pub struct SystemBuilder<'c, G: ComponentGroup<'c>> {
+	world: &'c World,
+	desc: ecs_system_desc_t,
+
+	// we need to keep these in memory until after build
+	name_temp: String,	
+	signature_temp: String,	
+
+	_phantom: std::marker::PhantomData<G>,
+}
+
+impl<'c, G: ComponentGroup<'c>> SystemBuilder<'c, G> {
+	pub(crate) fn new(world: &'c World) -> Self {
+		let world_raw = world.raw();
+		let mut desc = ecs_system_desc_t::default();
+
+		// m_desc.entity.name = name;
+		desc.entity.sep = NAME_SEP.as_ptr() as *const i8;
+		desc.entity.add[0] = unsafe { EcsOnUpdate };
+		// m_desc.query.filter.expr = expr;
+		// this->populate_filter_from_pack();
+
+		SystemBuilder {
+			world,
+			desc,
+			name_temp: "".to_owned(),
+			signature_temp: "".to_owned(),
+			_phantom: Default::default(),
+		}
+	}
+
+    pub fn named(mut self, name: &str) -> Self {
+        self.name_temp = name.to_owned();
+		self
+    }
+
+    pub fn signature(mut self, signature: &str) -> Self {
+        self.signature_temp = signature.to_owned();
+        self
+    }
+
+    pub fn interval(mut self, interval: f32) -> Self {
+        self.desc.interval = interval;
+		self
+    }
+
+	/** Associate system with entity */
+	pub fn entity(mut self, entity: Entity) -> Self {
+		self.desc.self_ = entity.raw();
+		self
+	}
+	
+    /** Set system context */
+    pub(crate) fn ctx(mut self, ctx: *mut ::std::os::raw::c_void) -> Self {
+        self.desc.ctx = ctx;
+        self
+    }	
+
+	// Build APIs, the 2 variants call the internal build()
+	fn build(&mut self) -> ecs_entity_t {
+		let world_raw = self.world.raw();
+		let e: ecs_entity_t;
+
+		let name_c_str = std::ffi::CString::new(self.name_temp.as_str()).unwrap();
+		self.desc.entity.name = name_c_str.as_ptr() as *const i8;
+
+		let signature_c_str = std::ffi::CString::new(self.signature_temp.as_str()).unwrap();
+		if self.signature_temp.len() > 0 {
+			self.desc.query.filter.expr = signature_c_str.as_ptr() as *const i8;
+		} else {
+			todo!();	// we need to infer some filter state from the <(A, B)> generic signature
+		}
+
+        // entity_t e, kind = m_desc.entity.add[0];
+        // bool is_trigger = kind == flecs::OnAdd || kind == flecs::OnRemove;
+
+        /*if (is_trigger) {
+            ecs_trigger_desc_t desc = {};
+            ecs_term_t term = m_desc.query.filter.terms[0];
+            if (ecs_term_is_initialized(&term)) {
+                desc.term = term;
+            } else {
+                desc.expr = m_desc.query.filter.expr;
+            }
+
+            desc.entity.entity = m_desc.entity.entity;
+            desc.events[0] = kind;
+            desc.callback = Invoker::run;
+            desc.self = m_desc.self;
+            desc.ctx = m_desc.ctx;
+            desc.binding_ctx = ctx;
+            desc.binding_ctx_free = reinterpret_cast<
+                ecs_ctx_free_t>(_::free_obj<Invoker>);
+
+            e = ecs_trigger_init(m_world, &desc);
+        } else*/ {
+            //let desc = self.desc;
+            // desc.callback = Some(Invoker::invoke);
+            // desc.self = m_desc.self;
+            // desc.query.filter.substitute_default = is_each;
+            // desc.binding_ctx = ctx;
+            // desc.binding_ctx_free = reinterpret_cast<ecs_ctx_free_t>(_::free_obj<Invoker>);
+
+			e = unsafe { ecs_system_init(world_raw, &self.desc) };
+        }
+
+        // if (this->m_desc.query.filter.terms_buffer) {
+        //     ecs_os_free(m_desc.query.filter.terms_buffer);
+        // }
+
+        e
+	}
+
+	pub fn each(mut self, mut cb: impl FnMut(Entity, G::RefTuple)) -> System {
+		let mut closure = |it: *mut ecs_iter_t| {
+			unsafe {
+				let it = &(*it);
+				for i in 0..it.count {
+					let eid = it.entities.offset(i as isize).as_ref().unwrap();
+					let e = Entity::new(it.world, *eid);
+					let rt = G::iter_as_ref_tuple(&it, i as isize);
+					cb(e, rt);
+				}
+			}
+		};
+		let trampoline = get_trampoline(&closure);
+
+		self.desc.callback = Some(trampoline);
+		self = self.ctx(&mut closure as *mut _ as *mut c_void);
+
+		let e = Self::build(&mut self);
+		System::new(self.world.raw(), e)		
+	}
+
+	pub fn each_mut(mut self, mut cb: impl FnMut(Entity, G::MutRefTuple)) -> System {
+		let mut closure = |it: *mut ecs_iter_t| {
+			unsafe {
+				let it = &(*it);
+				for i in 0..it.count {
+					let eid = it.entities.offset(i as isize).as_ref().unwrap();
+					let e = Entity::new(it.world, *eid);
+					let rt = G::iter_as_mut_tuple(&it, i as isize);
+					cb(e, rt);
+				}
+			}
+		};
+		let trampoline = get_trampoline(&closure);
+
+		self.desc.callback = Some(trampoline);
+		self = self.ctx(&mut closure as *mut _ as *mut c_void);
+
+		let e = Self::build(&mut self);
+		System::new(self.world.raw(), e)		
 	}
 }
