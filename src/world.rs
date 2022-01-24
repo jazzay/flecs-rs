@@ -209,12 +209,22 @@ impl World {
 		});
 	}
 
-	pub fn each2<A: Component, B: Component>(&self, mut cb: impl FnMut(Entity, &A, &B)) {
-		let filter = Filter::new_2::<A, B>(self.raw());
-		filter.each_2(|e: Entity, a: &A, b: &B| {
-			cb(e, a, b);
-		});
-	}	
+	pub fn filter<'a, G: ComponentGroup<'a>>(&'a self) -> FilterGroup<'a, G> {
+		let filter: FilterGroup<'a, G> = FilterGroup::new(self);
+        filter
+    }	
+
+	// Rust compiler will not let is use these short forms, perhaps we can solve the errors
+	//
+	// pub fn each<'a, G: ComponentGroup<'a>>(&'a self, cb: impl FnMut(Entity, G::RefTuple)) {
+	// 	let filter: FilterGroup<'a, G> = FilterGroup::new(self);
+	// 	filter.each(cb);
+    // }	
+
+	// pub fn each_mut<'a, G: ComponentGroup<'a>>(&'a self, cb: impl FnMut(Entity, G::MutRefTuple)) {
+	// 	let filter: FilterGroup<'a, G> = FilterGroup::new(self);
+	// 	filter.each_mut(cb);
+    // }	
 }
 
 impl Drop for World {

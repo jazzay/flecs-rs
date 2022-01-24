@@ -27,6 +27,9 @@ mod cache;	// Internal only
 mod component;
 pub(crate) use component::*;
 
+mod component_group;
+pub(crate) use component_group::*;
+
 mod entity;
 pub use entity::*;
 

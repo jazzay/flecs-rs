@@ -83,7 +83,7 @@ fn main() {
     println!("Impulse speed: {}", speed.value);
 
     // Prefab components can be iterated just like regular components:
-    world.each2(|e: Entity, _is: &ImpulseSpeed, p: &Position| {
+    world.filter::<(ImpulseSpeed, Position)>().each(|e: Entity, (_is, p)| {
         // TODO - need to support mutable component access
         //p.x += is.value;
         println!("{}: {{ {}, {} }}", e.name(), p.x, p.y);
