@@ -77,14 +77,14 @@ pub(crate) fn get_component_info(world: *mut ecs_world_t, comp_e: ecs_entity_t) 
 }
 
 #[derive(Debug)]
-pub(crate) struct ComponentDescriptor {
+pub struct ComponentDescriptor {
 	pub symbol: String, 
 	pub name: String, 
 	pub custom_id: Option<u64>,
 	pub layout: std::alloc::Layout
 }
 
-pub(crate) fn register_component(world: *mut ecs_world_t, desc: ComponentDescriptor) -> ecs_entity_t {
+pub fn register_component(world: *mut ecs_world_t, desc: ComponentDescriptor) -> ecs_entity_t {
 	// println!("register_component - {:?}", desc);
 
 	let mut e_desc: ecs_entity_desc_t = unsafe { MaybeUninit::zeroed().assume_init() };

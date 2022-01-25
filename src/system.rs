@@ -75,7 +75,7 @@ impl SystemBuilderOld {
 		}
 	}
 
-    pub fn name(mut self, name: &str) -> Self {
+    pub fn named(mut self, name: &str) -> Self {
         self.name_temp = name.to_owned();
 		self
     }
@@ -251,7 +251,7 @@ impl Iter {
 
         let mut count = self.count();
 
-        let is_shared = unsafe { !binding_util::ecs_term_is_owned(self.it, index) };
+        let is_shared = unsafe { !ecs_term_is_owned2(self.it, index) };
 
         /* If a shared column is retrieved with 'column', there will only be a
          * single value. Ensure that the application does not accidentally read
@@ -269,7 +269,7 @@ impl Iter {
 
     pub fn get_term_dynamic(&self, index: i32) -> ColumnDynamic {
         let mut count = self.count();
-        let is_shared = unsafe { !binding_util::ecs_term_is_owned(self.it, index) };
+        let is_shared = unsafe { !ecs_term_is_owned2(self.it, index) };
         if is_shared {
             count = 1;
         }
@@ -542,5 +542,22 @@ impl<'c, G: ComponentGroup<'c>> SystemBuilder<'c, G> {
 
 		let e = Self::build(&mut self);
 		System::new(self.world.raw(), e)		
+	}
+
+	// temp signature until I get component bundles working
+	pub fn iter<F: FnMut(&Iter)>(mut self, mut func: F) -> System {
+		// we have to wrap the passed in function in a trampoline
+		// so that we can access it again within the C callback handler
+		let mut closure = |it: *mut ecs_iter_t| {
+			let iter = Iter::new(it);
+			func(&iter);
+		};
+		let trampoline = get_trampoline(&closure);
+
+		self.desc.callback = Some(trampoline);
+		self = self.ctx(&mut closure as *mut _ as *mut c_void);
+
+		let e = Self::build(&mut self);
+		System::new(self.world.raw(), e)
 	}
 }

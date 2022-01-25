@@ -34,18 +34,18 @@ fn create_some_entities(world: &mut World, count: usize) {
 }
 
 // Iter functions not supported for now
-// fn system_one(it: &Iter) {
-// 	println!("system_one: entities = {}", it.count());
+fn system_with_iter(it: &Iter) {
+	println!("system_with_iter: entities = {}", it.count());
 
-// 	let positions = it.term::<Position>(1);
-// 	let vels = it.term::<Velocity>(2);
+	let positions = it.term::<Position>(1);
+	let vels = it.term::<Velocity>(2);
 
-// 	for index in 0..it.count() {
-// 		let pos = positions.get(index);
-// 		let vel = vels.get(index);
-// 		println!("   {:?}, {:?}", pos, vel);
-// 	}
-// }
+	for index in 0..it.count() {
+		let pos = positions.get(index);
+		let vel = vels.get(index);
+		println!("   {:?}, {:?}", pos, vel);
+	}
+}
 
 fn system_one(e: Entity, (pos, vel): (&mut Position, &mut Velocity)) {
 	pos.x += vel.x;
@@ -81,6 +81,10 @@ fn main() {
 	// world.system::<()>().name("system_two")
 	// 	.signature("Position, Scale")
 	// 	.iter(system_two);
+
+	world.system::<(Position, Velocity)>().named("system_with_iter")
+		.signature("Position, Velocity")
+		.iter(system_with_iter);
 
 	for _ in 0..5 {
 		world.progress(0.033);

@@ -88,6 +88,7 @@ mod tests {
 		let mut world = World::new();
 		world.component::<Position>();
 		world.component::<Velocity>();
+		world.component::<Scale>();
 	
 		create_some_entities(&mut world, 1000);
 		super::tick(&mut world);

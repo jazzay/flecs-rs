@@ -19,16 +19,16 @@ mod bindings;
 #[doc(hidden)]
 pub use bindings::*;
 
-mod binding_util;	// Internal only
-pub(crate) use binding_util::*;
+mod binding_util;
+pub use binding_util::*;
 
 mod cache;	// Internal only
 
 mod component;
-pub(crate) use component::*;
+pub use component::*;
 
 mod component_group;
-pub(crate) use component_group::*;
+pub use component_group::*;
 
 mod entity;
 pub use entity::*;
