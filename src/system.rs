@@ -459,7 +459,7 @@ impl<'c, G: ComponentGroup<'c>> SystemBuilder<'c, G> {
 		if self.signature_temp.len() > 0 {
 			self.desc.query.filter.expr = signature_c_str.as_ptr() as *const i8;
 		} else {
-			todo!();	// we need to infer some filter state from the <(A, B)> generic signature
+			// we should infer some filter state from the <(A, B)> generic signature
 		}
 
         // entity_t e, kind = m_desc.entity.add[0];

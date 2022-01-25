@@ -31,6 +31,10 @@ pub(crate) fn register_component_typed<T: 'static>(world: *mut ecs_world_t, name
 		s.split(".").last().unwrap().to_owned()
 	};
 
+	// To achieve language neutral component symbol/naming we need to strip off any compiler
+	// specific aspects of the symbol as well. But this may not jive with general Flecs-rs users...
+	let symbol = name.clone();
+
 	let comp_id = register_component(world, 
 		ComponentDescriptor { 
 			symbol,
