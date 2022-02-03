@@ -163,6 +163,15 @@ impl Entity {
 		self
 	}
 
+	// Added to assess performance impact of Type lookup within Benchmarks
+    pub fn set_fast<T: Component>(&self, comp_id: u64, value: T)  {
+		// let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
+		let mut is_added = false;
+		let ptr = unsafe { ecs_get_mut_id(self.world, self.entity, comp_id, &mut is_added) };
+		let dest = unsafe { (ptr as *mut T).as_mut().unwrap() };
+		*dest = value;
+    }
+
 	pub fn add<T: Component>(self) -> Self {
 		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
         unsafe { ecs_add_id(self.world, self.entity, comp_id) };
@@ -187,6 +196,11 @@ impl Entity {
 		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
         unsafe { ecs_remove_id(self.world, self.entity, comp_id) };
 		self
+	}
+
+	// Added to assess performance impact of Type lookup within Benchmarks
+	pub fn remove_fast<T: Component>(&self, comp_id: u64) {
+        unsafe { ecs_remove_id(self.world, self.entity, comp_id) };
 	}
 
 	// Dynamic Components

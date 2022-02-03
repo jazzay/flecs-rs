@@ -102,6 +102,10 @@ impl<'c, G: ComponentGroup<'c>> FilterGroup<'c, G> {
 				for i in 0..it.count {
                     let eid = it.entities.offset(i as isize).as_ref().unwrap();
                     let e = Entity::new(world_raw, *eid);
+
+					// TODO - performance is poor here due to looking up terms for each tuple entry * each entity
+					// we need to rework this to take slices of components, determined outside the loop
+					// so optimal iteration can occur
 					let rt = G::iter_as_mut_tuple(&it, i as isize);
 					cb(e, rt);
 				}

@@ -178,6 +178,11 @@ impl World {
 		None
 	}
 
+    pub fn component_id<T: Component>(&mut self) -> u64  {
+		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
+		comp_id
+	}
+
 	pub fn component<T: 'static>(&mut self) -> Entity {
 		let comp_id = register_component_typed::<T>(self.world, None);
 		Entity::new(self.world, comp_id)
