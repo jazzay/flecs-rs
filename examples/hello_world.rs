@@ -31,7 +31,7 @@ fn main() {
 	world.component::<Apples>();
 
 	world.system::<(Position, Velocity)>()
-		.signature("Position, Velocity")
+		.expr("Position, Velocity")
 		.each(|e, (pos, vel)| {
             println!("  {}: {:?}, {:?}", e.name(), pos, vel);
         });
