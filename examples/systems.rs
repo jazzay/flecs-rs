@@ -66,24 +66,24 @@ fn main() {
 	// Can wire a function into a system
 	world.system::<(Position, Velocity)>()
 		.named("system_one")
-		.signature("Position, Velocity, !Scale")
+		.expr("Position, Velocity, !Scale")
 		.each_mut(system_one);
 
 	// Or pass a closure directly
 	world.system::<(Position, Scale)>()
 		.named("system_two")
-		.signature("Position, Scale")
+		.expr("Position, Scale")
 		.each_mut(|e, (pos, s)| {
 			println!("Sys2 - {}: {:?}, {:?}", e.name(), pos, s);
 		});
 
-	// Don't support 0, 1 comp systems right now
-	// world.system::<()>().name("system_two")
-	// 	.signature("Position, Scale")
+	// We don't yet support 1 comp systems yet due to tuple macro impl
+	// world.system::<Position>().name("system_three")
+	// 	.signature("Position")
 	// 	.iter(system_two);
 
-	world.system::<(Position, Velocity)>().named("system_with_iter")
-		.signature("Position, Velocity")
+	world.system_dynamic().named("system_with_iter")
+		.expr("Position, Velocity")
 		.iter(system_with_iter);
 
 	for _ in 0..5 {

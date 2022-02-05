@@ -205,6 +205,14 @@ impl World {
         sb
     }	
 
+	// not sure yet if 'dynamic' is the right terminology, basically a system with no generic compile time types.
+	//	term T's must be determined explicitly in system implementations and match expression syntax.
+	//	Will not support each() calls for now
+	pub fn system_dynamic<'a>(&'a self) -> SystemBuilder<'a, ((), ())> {
+		let sb: SystemBuilder<'a, ((), ())> = SystemBuilder::new(self);
+        sb
+    }	
+
 	pub fn filter<'a, G: ComponentGroup<'a>>(&'a self) -> FilterGroup<'a, G> {
 		let filter: FilterGroup<'a, G> = FilterGroup::new(self);
         filter
