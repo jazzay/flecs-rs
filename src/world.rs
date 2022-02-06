@@ -49,7 +49,14 @@ impl World {
         unsafe { ecs_progress(self.world, delta_time) }
     }	
 
-    /** Signal application should quit.
+	pub fn delta_time(&self) -> f32 {
+		unsafe { 
+			let stats = ecs_get_world_info(self.world).as_ref().unwrap();
+			stats.delta_time
+		}
+	}
+
+	/** Signal application should quit.
      * After calling this operation, the next call to progress() returns false.
      */
     pub fn quit(&self) {
