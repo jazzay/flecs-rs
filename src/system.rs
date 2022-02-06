@@ -110,7 +110,13 @@ impl<'c, G: ComponentGroup<'c>> SystemBuilder<'c, G> {
 		let e: ecs_entity_t;
 
 		let name_c_str = std::ffi::CString::new(self.name_temp.as_str()).unwrap();
-		self.desc.entity.name = name_c_str.as_ptr() as *const i8;
+
+		if self.name_temp.len() > 0 {
+			self.desc.entity.name = name_c_str.as_ptr() as *const i8;
+		} else {
+			// We must pass Null to flecs instead of "" otherwise bad stuff happens!
+			self.desc.entity.name = std::ptr::null()
+		}
 
 		let expr_c_str = std::ffi::CString::new(self.expr_temp.as_str()).unwrap();
 		if self.expr_temp.len() > 0 {
