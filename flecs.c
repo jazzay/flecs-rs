@@ -12,22 +12,9 @@
 #endif
 
 #include <stdlib.h>
-#include <string.h>
-#include <assert.h>
-#include <stdarg.h>
-#include <stdio.h>
-#include <time.h>
-#include <ctype.h>
-#include <math.h>
-#include <stddef.h>
-
-#ifdef _MSC_VER
-//FIXME
-#else
-#include <sys/param.h>  /* attempt to define endianness */
-#endif
-#ifdef linux
-# include <endian.h>    /* attempt to define endianness */
+#include <limits.h>
+#ifndef NDEBUG
+#include <stdio.h> /* easier debugging, throws warning in release for printfs */
 #endif
 
 /**
@@ -405,19 +392,20 @@ struct ecs_data_t {
 /** Flags for quickly checking for special properties of a table. */
 #define EcsTableHasBuiltins         1u    /* Does table have builtin components */
 #define EcsTableIsPrefab            2u    /* Does the table store prefabs */
-#define EcsTableHasIsA              4u    /* Does the table type has IsA */
-#define EcsTableHasPairs            8u    /* Does the table type have pairs */
-#define EcsTableHasModule           16u   /* Does the table have module data */
-#define EcsTableHasXor              32u   /* Does the table type has XOR */
-#define EcsTableIsDisabled          64u   /* Does the table type has EcsDisabled */
-#define EcsTableHasCtors            128u
-#define EcsTableHasDtors            256u
-#define EcsTableHasCopy             512u
-#define EcsTableHasMove             1024u
-#define EcsTableHasOnAdd            2048u
-#define EcsTableHasOnRemove         4096u
-#define EcsTableHasOnSet            8192u
-#define EcsTableHasUnSet            16384u
+#define EcsTableHasIsA              4u    /* Does the table have IsA relation */
+#define EcsTableHasChildOf          8u    /* Does the table type ChildOf relation */
+#define EcsTableHasPairs            16u   /* Does the table type have pairs */
+#define EcsTableHasModule           32u   /* Does the table have module data */
+#define EcsTableHasXor              64u   /* Does the table type has XOR */
+#define EcsTableIsDisabled          128u   /* Does the table type has EcsDisabled */
+#define EcsTableHasCtors            256u
+#define EcsTableHasDtors            512u
+#define EcsTableHasCopy             1024u
+#define EcsTableHasMove             2048u
+#define EcsTableHasOnAdd            4096u
+#define EcsTableHasOnRemove         8192u
+#define EcsTableHasOnSet            16384u
+#define EcsTableHasUnSet            32768u
 #define EcsTableHasSwitch           65536u
 #define EcsTableHasDisabled         131072u
 
@@ -472,11 +460,10 @@ struct ecs_table_t {
                                       *  - 0..count(T):         type -> storage_type
                                       *  - count(T)..count(S):  storage_type -> type
                                       */
-
+                                     
+    ecs_graph_node_t node;           /* Graph node */
     ecs_data_t storage;              /* Component storage */
     ecs_type_info_t **c_info;        /* Cached pointers to component info */
-
-    ecs_graph_node_t node;           /* Graph node */
 
     int32_t *dirty_state;            /* Keep track of changes in columns */
     int32_t alloc_count;             /* Increases when columns are reallocd */
@@ -487,6 +474,7 @@ struct ecs_table_t {
     int32_t bs_column_offset;
 
     int32_t lock;
+    int32_t refcount;
 };
 
 /** Table cache */
@@ -725,7 +713,6 @@ struct ecs_stage_t {
     ecs_vector_t *post_frame_actions;
 
     /* Namespacing */
-    ecs_table_t *scope_table;    /* Table for current scope */
     ecs_entity_t scope;          /* Entity of current scope */
     ecs_entity_t with;           /* Id to add by default to new entities */
     ecs_entity_t base;           /* Currently instantiated top-level base */
@@ -773,9 +760,18 @@ struct ecs_id_record_t {
     /* All tables for which an incoming (remove) edge to the id was created */
     ecs_map_t *remove_refs;
 
-    ecs_entity_t on_delete;         /* Cleanup action for removing id */
-    ecs_entity_t on_delete_object;  /* Cleanup action for removing object */
+    /* Flags for id */
+    ecs_flags32_t flags;
+
+    uint64_t id; /* Id to element in storage */
 };
+
+/* Convenience struct to iterate table array for id */
+typedef struct ecs_table_iter_t {
+    const ecs_table_record_t *begin;
+    const ecs_table_record_t *end;
+    const ecs_table_record_t *cur;
+} ecs_table_iter_t;
 
 typedef struct ecs_store_t {
     /* Entity lookup */
@@ -823,8 +819,11 @@ struct ecs_world_t {
     ecs_header_t hdr;
 
     /* --  Type metadata -- */
-    ecs_map_t *id_index;         /* map<id, ecs_id_record_t> */
+    ecs_map_t *id_index;         /* map<id, ecs_id_record_t*> */
     ecs_sparse_t *type_info;     /* sparse<type_id, type_info_t> */
+
+    /* Cached handle to (IsA, *) */
+    ecs_id_record_t *idr_isa_wildcard;
 
     /* -- Mixins -- */
     ecs_world_t *self;
@@ -845,9 +844,16 @@ struct ecs_world_t {
 
     /* --  Storages for API objects -- */
 
-    ecs_sparse_t *queries;       /* sparse<query_id, ecs_query_t> */
-    ecs_sparse_t *triggers;      /* sparse<query_id, ecs_trigger_t> */
-    ecs_sparse_t *observers;     /* sparse<query_id, ecs_observer_t> */
+    ecs_sparse_t *queries;         /* sparse<query_id, ecs_query_t> */
+    ecs_sparse_t *triggers;        /* sparse<query_id, ecs_trigger_t> */
+    ecs_sparse_t *observers;       /* sparse<query_id, ecs_observer_t> */
+    ecs_sparse_t *id_records;      /* sparse<idr_id, ecs_id_record_t> */
+
+
+    /* --  Pending table event buffers -- */
+
+    ecs_sparse_t *pending_buffer;  /* sparse<table_id, ecs_table_t*> */
+    ecs_sparse_t *pending_tables;  /* sparse<table_id, ecs_table_t*> */
     
 
     /* Keep track of components that were added/removed to/from monitored
@@ -974,7 +980,7 @@ void* _ecs_table_cache_insert(
 #define ecs_table_cache_insert(cache, T, table)\
     ECS_CAST(T*, _ecs_table_cache_insert(cache, ECS_SIZEOF(T), table))
 
-void _ecs_table_cache_remove(
+bool _ecs_table_cache_remove(
     ecs_table_cache_t *cache,
     ecs_size_t size,
     const ecs_table_t *table);
@@ -990,7 +996,7 @@ void* _ecs_table_cache_get(
 #define ecs_table_cache_get(cache, T, table)\
     ECS_CAST(T*, _ecs_table_cache_get(cache, ECS_SIZEOF(T), table))
 
-void ecs_table_cache_set_empty(
+bool ecs_table_cache_set_empty(
     ecs_table_cache_t *cache,
     const ecs_table_t *table,
     bool empty);
@@ -1013,9 +1019,6 @@ int32_t ecs_table_cache_count(
     const ecs_table_cache_t *cache);
 
 int32_t ecs_table_cache_empty_count(
-    const ecs_table_cache_t *cache);
-
-bool ecs_table_cache_is_empty(
     const ecs_table_cache_t *cache);
 
 void _ecs_table_cache_fini_delete_all(
@@ -1240,10 +1243,6 @@ void ecs_qsort(
 void flecs_bootstrap(
     ecs_world_t *world);
 
-ecs_type_t flecs_bootstrap_type(
-    ecs_world_t *world,
-    ecs_entity_t entity);
-
 #define flecs_bootstrap_component(world, id)\
     ecs_component_init(world, &(ecs_component_desc_t){\
         .entity = {\
@@ -1256,10 +1255,11 @@ ecs_type_t flecs_bootstrap_type(
     });
 
 #define flecs_bootstrap_tag(world, name)\
-    ecs_set_name(world, name, (char*)&#name[ecs_os_strlen(world->name_prefix)]);\
-    ecs_set_symbol(world, name, #name);\
+    ecs_add_id(world, name, EcsFinal);\
     ecs_add_pair(world, name, EcsChildOf, ecs_get_scope(world));\
-    ecs_set(world, name, EcsComponent, {.size = 0})
+    ecs_set(world, name, EcsComponent, {.size = 0});\
+    ecs_set_name(world, name, (char*)&#name[ecs_os_strlen(world->name_prefix)]);\
+    ecs_set_symbol(world, name, #name)
 
 
 /* Bootstrap functions for other parts in the code */
@@ -1366,17 +1366,26 @@ const ecs_table_record_t* flecs_id_record_table(
     ecs_id_record_t *idr,
     ecs_table_t *table);
 
-const ecs_table_record_t* flecs_id_record_tables(
-    const ecs_id_record_t *idr);
+void flecs_process_pending_tables(
+    const ecs_world_t *world);
 
-const ecs_table_record_t* flecs_id_record_empty_tables(
-    const ecs_id_record_t *idr);
+ecs_id_record_t* flecs_table_iter(
+    ecs_world_t *world,
+    ecs_id_t id,
+    ecs_table_iter_t *out);
 
-int32_t flecs_id_record_count(
-    const ecs_id_record_t *idr);
+ecs_id_record_t* flecs_empty_table_iter(
+    ecs_world_t *world,
+    ecs_id_t id,
+    ecs_table_iter_t *out);
 
-int32_t flecs_id_record_empty_count(
-    const ecs_id_record_t *idr);
+bool flecs_idr_iter(
+    ecs_id_record_t *idr,
+    ecs_table_iter_t *out);
+
+bool flecs_idr_empty_iter(
+    ecs_id_record_t *idr,
+    ecs_table_iter_t *out);
 
 void flecs_register_add_ref(
     ecs_world_t *world,
@@ -1390,7 +1399,8 @@ void flecs_register_remove_ref(
 
 void flecs_clear_id_record(
     ecs_world_t *world,
-    ecs_id_t id);
+    ecs_id_t id,
+    ecs_id_record_t *idr);
 
 void flecs_triggers_notify(
     ecs_iter_t *it,
@@ -1418,6 +1428,35 @@ void flecs_observer_fini(
     ecs_world_t *world,
     ecs_observer_t *observer);
 
+/* Suspend/resume readonly state. To fully support implicit registration of
+ * components, it should be possible to register components while the world is
+ * in readonly mode. It is not uncommon that a component is used first from
+ * within a system, which are often ran while in readonly mode.
+ * 
+ * Suspending readonly mode is only allowed when the world is not multithreaded.
+ * When a world is multithreaded, it is not safe to (even temporarily) leave
+ * readonly mode, so a multithreaded application should always explicitly
+ * register components in advance. 
+ * 
+ * These operations also suspend deferred mode.
+ */
+typedef struct {
+    bool is_readonly;
+    bool is_deferred;
+    int32_t defer_count;
+    ecs_entity_t scope;
+    ecs_entity_t with;
+    ecs_vector_t *defer_queue;
+    ecs_stage_t *stage;
+} ecs_suspend_readonly_state_t;
+
+ecs_world_t* flecs_suspend_readonly(
+    const ecs_world_t *world,
+    ecs_suspend_readonly_state_t *state);
+
+void flecs_resume_readonly(
+    ecs_world_t *world,
+    ecs_suspend_readonly_state_t *state);
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Stage API
@@ -1797,23 +1836,6 @@ bool flecs_iter_next_instanced(
     ecs_iter_t *it,
     bool result);
 
-////////////////////////////////////////////////////////////////////////////////
-//// Time API
-////////////////////////////////////////////////////////////////////////////////
-
-void flecs_os_time_setup(void);
-
-uint64_t flecs_os_time_now(void);
-
-void flecs_os_time_sleep(
-    int32_t sec, 
-    int32_t nanosec);
-
-/* Increase or reset timer resolution (Windows only) */
-FLECS_API
-void flecs_increase_timer_resolution(
-    bool enable);
-
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Poly API
@@ -2152,6 +2174,7 @@ void init_storage_table(
     if (storage_ids.count && storage_ids.count != count) {
         table->storage_table = flecs_table_find_or_create(world, &storage_ids);
         table->storage_type = table->storage_table->type;
+        table->storage_table->refcount ++;
         ecs_assert(table->storage_table != NULL, ECS_INTERNAL_ERROR, NULL);
     } else if (storage_ids.count) {
         table->storage_table = table;
@@ -2381,32 +2404,6 @@ void run_on_remove(
 
 /* -- Private functions -- */
 
-/* If table goes from 0 to >0 entities or from >0 entities to 0 entities notify
- * queries. This allows systems associated with queries to move inactive tables
- * out of the main loop. */
-static
-void table_activate(
-    ecs_world_t *world,
-    ecs_table_t *table,
-    bool activate)
-{
-    ecs_entity_t evt = activate ? EcsOnTableFill : EcsOnTableEmpty;
-    ecs_ids_t ids = {
-        .array = ecs_vector_first(table->type, ecs_id_t),
-        .count = ecs_vector_count(table->type)
-    };
-
-    ecs_emit(world, &(ecs_event_desc_t) {
-        .event = evt,
-        .table = table,
-        .ids = &ids,
-        .observable = world,
-        .table_event = true
-    });
-
-    flecs_table_set_empty(world, table);
-}
-
 static
 void ctor_component(
     ecs_world_t *world,
@@ -2513,8 +2510,8 @@ void dtor_all_components(
                         ECS_INTERNAL_ERROR, NULL);
                 } else {
                     // If this is not a delete, clear the entity index record
-                    ecs_record_t r = {NULL, 0};
-                    ecs_eis_set(world, e, &r);                
+                    records[i]->table = NULL;
+                    records[i]->row = 0;
                 }
             } else {
                 /* This should only happen in rare cases, such as when the data
@@ -2547,9 +2544,10 @@ void dtor_all_components(
                 ecs_assert(!e || records[i] == ecs_eis_get(world, e), 
                     ECS_INTERNAL_ERROR, NULL);
                 ecs_assert(!e || records[i]->table == table, 
-                    ECS_INTERNAL_ERROR, NULL);                
-                ecs_record_t r = {NULL, 0};
-                ecs_eis_set(world, e, &r);
+                    ECS_INTERNAL_ERROR, NULL);
+                records[i]->table = NULL;
+                records[i]->row = 0;
+                (void)e;
             }
         }      
     }
@@ -2571,7 +2569,9 @@ void fini_data(
         return;
     }
 
-    if (do_on_remove) {
+    ecs_flags32_t flags = table->flags;
+
+    if (do_on_remove && (flags & EcsTableHasOnRemove)) {
         run_on_remove(world, table, data);        
     }
 
@@ -2626,7 +2626,7 @@ void fini_data(
     data->record_ptrs = NULL;
 
     if (deactivate && count) {
-        table_activate(world, table, false);
+        flecs_table_set_empty(world, table);
     }
 }
 
@@ -2678,12 +2678,29 @@ void flecs_table_free(
     ecs_world_t *world,
     ecs_table_t *table)
 {
+    bool is_root = table == &world->store.root;
     ecs_assert(!table->lock, ECS_LOCKED_STORAGE, NULL);
+    ecs_assert(is_root || table->id != 0, ECS_INTERNAL_ERROR, NULL);
+    ecs_assert(is_root || flecs_sparse_is_alive(world->store.tables, table->id),
+        ECS_INTERNAL_ERROR, NULL);
     (void)world;
+
+    if (--table->refcount != 0) {
+        ecs_assert(table->refcount >= 0, ECS_INTERNAL_ERROR, NULL);
+        return;
+    }
+
+    if (!is_root) {
+        flecs_notify_queries(
+            world, &(ecs_query_event_t){
+                .kind = EcsQueryTableUnmatch,
+                .table = table
+            });
+    }
 
 #ifndef NDEBUG
     char *expr = ecs_type_str(world, table->type);
-    ecs_dbg_2("#[green]table#[reset] [%s] deleted", expr);
+    ecs_dbg_2("#[green]table#[normal] [%s] deleted with id %d", expr, table->id);
     ecs_os_free(expr);
 #endif    
 
@@ -2692,7 +2709,16 @@ void flecs_table_free(
 
     flecs_table_clear_edges(world, table);
 
-    flecs_unregister_table(world, table);
+    if (!is_root) {
+        flecs_unregister_table(world, table);
+
+        ecs_ids_t ids = {
+            .array = ecs_vector_first(table->type, ecs_id_t),
+            .count = ecs_vector_count(table->type)
+        };
+
+        flecs_hashmap_remove(world->store.table_map, &ids, ecs_table_t*);
+    }
 
     ecs_os_free(table->dirty_state);
     ecs_os_free(table->storage_map);
@@ -2701,7 +2727,15 @@ void flecs_table_free(
         ecs_os_free(table->c_info);
     }
 
-    table->id = 0;
+    if (table->storage_table && table->storage_table != table) {
+        flecs_table_free(world, table->storage_table);
+    }
+
+    if (!world->is_fini) {
+        ecs_assert(!is_root, ECS_INTERNAL_ERROR, NULL);
+        flecs_table_free_type(table);
+        flecs_sparse_remove(world->store.tables, table->id);
+    }
 }
 
 /* Free table type. Do this separately from freeing the table as types can be
@@ -3002,7 +3036,7 @@ int32_t grow_data(
     mark_table_dirty(world, table, 0);
 
     if (!world->is_readonly && !cur_count) {
-        table_activate(world, table, true);
+        flecs_table_set_empty(world, table);
     }
 
     table->alloc_count ++;
@@ -3069,7 +3103,7 @@ int32_t flecs_table_append(
     if (!(table->flags & EcsTableIsComplex)) {
         fast_append(columns, column_count);
         if (!count) {
-            table_activate(world, table, true); /* See below */
+            flecs_table_set_empty(world, table); /* See below */
         }
         return count;
     }
@@ -3127,7 +3161,7 @@ int32_t flecs_table_append(
     /* If this is the first entity in this table, signal queries so that the
      * table moves from an inactive table to an active table. */
     if (!count) {
-        table_activate(world, table, true);
+        flecs_table_set_empty(world, table);
     } 
 
     return count;
@@ -3212,7 +3246,7 @@ void flecs_table_delete(
 
     /* If table is empty, deactivate it */
     if (!count) {
-        table_activate(world, table, false);
+        flecs_table_set_empty(world, table);
     }
 
     /* Destruct component data */
@@ -3912,7 +3946,7 @@ void flecs_table_merge(
     new_table->alloc_count ++;
 
     if (!new_count && old_count) {
-        table_activate(world, new_table, true);
+        flecs_table_set_empty(world, new_table);
     }
 }
 
@@ -3939,9 +3973,9 @@ void flecs_table_replace_data(
     int32_t count = ecs_table_count(table);
 
     if (!prev_count && count) {
-        table_activate(world, table, true);
+        flecs_table_set_empty(world, table);
     } else if (prev_count && !count) {
-        table_activate(world, table, false);
+        flecs_table_set_empty(world, table);
     }
 
     table->alloc_count ++;
@@ -3949,9 +3983,7 @@ void flecs_table_replace_data(
 
 int32_t* flecs_table_get_dirty_state(
     ecs_table_t *table)
-{
-    ecs_assert(!table->lock, ECS_LOCKED_STORAGE, NULL);
-    
+{    
     if (!table->dirty_state) {
         int32_t column_count = ecs_vector_count(table->storage_type);
         table->dirty_state = ecs_os_malloc_n( int32_t, column_count + 1);
@@ -3999,8 +4031,10 @@ void ecs_table_lock(
     ecs_world_t *world,
     ecs_table_t *table)
 {
-    if (ecs_poly_is(world, ecs_world_t) && !world->is_readonly) {
-        table->lock ++;
+    if (table) {
+        if (ecs_poly_is(world, ecs_world_t) && !world->is_readonly) {
+            table->lock ++;
+        }
     }
 }
 
@@ -4008,9 +4042,11 @@ void ecs_table_unlock(
     ecs_world_t *world,
     ecs_table_t *table)
 {
-    if (ecs_poly_is(world, ecs_world_t) && !world->is_readonly) {
-        table->lock --;
-        ecs_assert(table->lock >= 0, ECS_INVALID_OPERATION, NULL);
+    if (table) {
+        if (ecs_poly_is(world, ecs_world_t) && !world->is_readonly) {
+            table->lock --;
+            ecs_assert(table->lock >= 0, ECS_INVALID_OPERATION, NULL);
+        }
     }
 }
 
@@ -4129,6 +4165,7 @@ error:
     return NULL;
 }
 
+#include <stddef.h>
 
 static const char* mixin_kind_str[] = {
     [EcsMixinBase] = "base (should never be requested by application)",
@@ -4312,6 +4349,7 @@ const ecs_world_t* ecs_get_world(
 }
 
 
+#include <ctype.h>
 
 static
 void flecs_notify_on_add(
@@ -4393,7 +4431,6 @@ void* get_base_component(
     ecs_table_t *table,
     ecs_id_t id,
     ecs_id_record_t *table_index,
-    ecs_id_record_t *table_index_isa,
     int32_t recur_depth)
 {
     /* Cycle detected in IsA relation */
@@ -4409,19 +4446,10 @@ void* get_base_component(
         return NULL;
     }
 
-    /* Should always be an id record for IsA, otherwise a table with a 
-     * HasBase flag set should not exist. */
-    if (!table_index_isa) {
-        ecs_id_record_t *idr = flecs_get_id_record(
-            world, ecs_pair(EcsIsA, EcsWildcard));
-        ecs_check(idr != NULL, ECS_INTERNAL_ERROR, NULL);
-        table_index_isa = idr;
-    }
-
     /* Table should always be in the table index for (IsA, *), otherwise the
      * HasBase flag should not have been set */
     const ecs_table_record_t *tr_isa = flecs_id_record_table(
-        table_index_isa, table);
+        world->idr_isa_wildcard, table);
     ecs_check(tr_isa != NULL, ECS_INTERNAL_ERROR, NULL);
 
     ecs_type_t type = table->type;
@@ -4455,7 +4483,7 @@ void* get_base_component(
 
         if (!tr) {
             ptr = get_base_component(world, table, id, table_index, 
-                table_index_isa, recur_depth + 1);
+                recur_depth + 1);
         } else {
             int32_t row = ECS_RECORD_TO_ROW(r->row);
             ptr = get_component_w_index(table, tr->column, row);
@@ -4601,7 +4629,8 @@ void notify(
     int32_t row,
     int32_t count,
     ecs_entity_t event,
-    ecs_ids_t *ids)
+    ecs_ids_t *ids,
+    ecs_entity_t relation)
 {
     ecs_emit(world, &(ecs_event_desc_t) {
         .event = event,
@@ -4610,7 +4639,8 @@ void notify(
         .other_table = other_table,
         .offset = row,
         .count = count,
-        .observable = world
+        .observable = world,
+        .relation = relation
     });
 }
 
@@ -4765,15 +4795,12 @@ void instantiate(
         return;
     }
 
-    /* If base is a parent, instantiate children of base for instances */
-    const ecs_id_record_t *idr = flecs_get_id_record(
-        world, ecs_pair(EcsChildOf, base));
-
-    const ecs_table_record_t *tables = flecs_id_record_tables(idr);
-    int32_t i, table_count = flecs_id_record_count(idr);
-    for (i = 0; i < table_count; i ++) {
-        instantiate_children(
-            world, base, table, data, row, count, tables[i].table);
+    ecs_table_iter_t it;
+    if (flecs_table_iter(world, ecs_pair(EcsChildOf, base), &it) != NULL) {
+        for (; it.cur < it.end; ++ it.cur) {
+            instantiate_children(
+                world, base, table, data, row, count, it.cur->table);
+        }
     }
 }
 
@@ -4782,20 +4809,26 @@ bool override_component(
     ecs_world_t *world,
     ecs_entity_t component,
     ecs_type_t type,
+    ecs_table_t *table,
+    ecs_table_t *other_table,
     ecs_data_t *data,
     ecs_column_t *column,
     int32_t row,
-    int32_t count);
+    int32_t count,
+    bool notify_on_set);
 
 static
 bool override_from_base(
     ecs_world_t *world,
     ecs_entity_t base,
     ecs_entity_t component,
+    ecs_table_t *table,
+    ecs_table_t *other_table,
     ecs_data_t *data,
     ecs_column_t *column,
     int32_t row,
-    int32_t count)
+    int32_t count,
+    bool notify_on_set)
 {
     ecs_assert(component != 0, ECS_INTERNAL_ERROR, NULL);
 
@@ -4836,12 +4869,40 @@ bool override_from_base(
             }                    
         }
 
+        ecs_ids_t ids = {
+            .array = (ecs_id_t[]){ component },
+            .count = 1
+        };
+
+        if (notify_on_set) {
+            /* Check if the component was available for the previous table. If
+             * the override is caused by an add operation, it does not introduce
+             * a new component value, and the application should not be 
+             * notified. 
+             * 
+             * If the override is the result if adding a IsA relation
+             * with an entity that has components with the OVERRIDE flag, an
+             * event should be generated, since this represents a new component
+             * (and component value) for the entity.
+             * 
+             * Note that this is an edge case, regular (self) triggers won't be 
+             * notified because the event id is not the component but an IsA
+             * relationship. Superset triggers will not be invoked because the
+             * component is owned. */
+            int32_t c = ecs_search_relation(world, other_table, 0, component, 
+                EcsIsA, 1, 0, 0, 0, 0);
+            if (c == -1) {
+                notify(
+                    world, table, other_table, row, count, EcsOnSet, &ids, 0);
+            }
+        }
+
         return true;
     } else {
         /* If component not found on base, check if base itself inherits */
         ecs_type_t base_type = base_info.table->type;
-        return override_component(world, component, base_type, data, column, 
-            row, count);
+        return override_component(world, component, base_type, table, 
+            other_table, data, column, row, count, notify_on_set);
     }
 }
 
@@ -4850,10 +4911,13 @@ bool override_component(
     ecs_world_t *world,
     ecs_entity_t component,
     ecs_type_t type,
+    ecs_table_t *table,
+    ecs_table_t *other_table,
     ecs_data_t *data,
     ecs_column_t *column,
     int32_t row,
-    int32_t count)
+    int32_t count,
+    bool notify_on_set)
 {
     ecs_entity_t *type_array = ecs_vector_first(type, ecs_entity_t);
     int32_t i, type_count = ecs_vector_count(type);
@@ -4869,7 +4933,7 @@ bool override_component(
 
         if (ECS_HAS_RELATION(e, EcsIsA)) {
             if (override_from_base(world, ecs_pair_object(world, e), component,
-                data, column, row, count))
+                table, other_table, data, column, row, count, notify_on_set))
             {
                 return true;
             }
@@ -4883,10 +4947,12 @@ static
 void components_override(
     ecs_world_t *world,
     ecs_table_t *table,
+    ecs_table_t *other_table,
     ecs_data_t *data,
     int32_t row,
     int32_t count,
-    ecs_ids_t *added)
+    ecs_ids_t *added,
+    bool notify_on_set)
 {
     ecs_assert(data != NULL, ECS_INTERNAL_ERROR, NULL);
 
@@ -4934,7 +5000,8 @@ void components_override(
             continue;
         }
 
-        override_component(world, id, type, data, column, row, count);
+        override_component(world, id, type, table, other_table, data, column, 
+            row, count, notify_on_set);
     }
 error:
     return;
@@ -5003,7 +5070,8 @@ int32_t new_entity(
     ecs_entity_info_t *info,
     ecs_table_t *new_table,
     ecs_table_diff_t *diff,
-    bool construct)
+    bool construct,
+    bool notify_on_set)
 {
     ecs_record_t *record = info->record;
     ecs_data_t *new_data = &new_table->storage;
@@ -5024,7 +5092,7 @@ int32_t new_entity(
 
     if (new_table->flags & EcsTableHasAddActions) {
         flecs_notify_on_add(
-            world, new_table, NULL, new_data, new_row, 1, diff, true);       
+            world, new_table, NULL, new_data, new_row, 1, diff, notify_on_set);       
     }
 
     info->data = new_data;
@@ -5042,7 +5110,8 @@ int32_t move_entity(
     int32_t src_row,
     ecs_table_t *dst_table,
     ecs_table_diff_t *diff,
-    bool construct)
+    bool construct,
+    bool notify_on_set)
 {    
     ecs_data_t *dst_data = &dst_table->storage;
     ecs_assert(src_data != dst_data, ECS_INTERNAL_ERROR, NULL);
@@ -5082,7 +5151,7 @@ int32_t move_entity(
     if (src_table != dst_table || diff->added.count) {
         if (diff->added.count && (dst_table->flags & EcsTableHasAddActions)) {
             flecs_notify_on_add(world, dst_table, src_table, dst_data, 
-                dst_row, 1, diff, true);
+                dst_row, 1, diff, notify_on_set);
         }
     }
 
@@ -5180,7 +5249,8 @@ void commit(
     ecs_entity_info_t *info,
     ecs_table_t *dst_table,   
     ecs_table_diff_t *diff,
-    bool construct)
+    bool construct,
+    bool notify_on_set)
 {
     ecs_assert(!world->is_readonly, ECS_INTERNAL_ERROR, NULL);
     
@@ -5206,7 +5276,7 @@ void commit(
 
         if (dst_table->type) { 
             info->row = move_entity(world, entity, info, src_table, 
-                src_data, info->row, dst_table, diff, construct);
+                src_data, info->row, dst_table, diff, construct, notify_on_set);
             info->table = dst_table;
         } else {
             delete_entity(world, src_table, src_data, info->row, diff);
@@ -5218,7 +5288,7 @@ void commit(
     } else {        
         if (dst_table->type) {
             info->row = new_entity(
-                world, entity, info, dst_table, diff, construct);
+                world, entity, info, dst_table, diff, construct, notify_on_set);
             info->table = dst_table;
         }        
     }
@@ -5257,7 +5327,7 @@ void new(
         table = table_append(world, table, to_add->array[i], &diff);
     }
 
-    new_entity(world, entity, &info, table, &diff, true);
+    new_entity(world, entity, &info, table, &diff, true, true);
 
     diff_free(&diff);
 }
@@ -5386,7 +5456,9 @@ void add_id_w_info(
     ecs_table_t *dst_table = flecs_table_traverse_add(
         world, src_table, &id, &diff);
 
-    commit(world, entity, info, dst_table, &diff, construct);
+    commit(world, entity, info, dst_table, &diff, construct, 
+        false); /* notify_on_set = false, this function is only called from
+                 * functions that are about to set the component. */
 }
 
 static
@@ -5409,7 +5481,7 @@ void add_id(
     ecs_table_t *dst_table = flecs_table_traverse_add(
         world, src_table, &id, &diff);
 
-    commit(world, entity, &info, dst_table, &diff, true);
+    commit(world, entity, &info, dst_table, &diff, true, true);
 
     flecs_defer_flush(world, stage);
 }
@@ -5434,7 +5506,7 @@ void remove_id(
     ecs_table_t *dst_table = flecs_table_traverse_remove(
         world, src_table, &id, &diff);
 
-    commit(world, entity, &info, dst_table, &diff, true);
+    commit(world, entity, &info, dst_table, &diff, true, true);
 
     flecs_defer_flush(world, stage);
 }
@@ -5499,7 +5571,8 @@ void flecs_notify_on_add(
 
     if (diff->added.count) {
         if (table->flags & EcsTableHasIsA) {
-            components_override(world, table, data, row, count, &diff->added);
+            components_override(world, table, other_table, data, row, count, 
+                &diff->added, run_on_set);
         }
 
         if (table->flags & EcsTableHasSwitch) {
@@ -5509,12 +5582,16 @@ void flecs_notify_on_add(
 
         if (table->flags & EcsTableHasOnAdd) {
             notify(world, table, other_table, row, count, EcsOnAdd, 
-                &diff->added);
+                &diff->added, 0);
         }
     }
 
+    /* When a IsA relation is added to an entity, that entity inherits the
+     * components from the base. Send OnSet notifications so that an application
+     * can respond to these new components. */
     if (run_on_set && diff->on_set.count) {
-        notify(world, table, other_table, row, count, EcsOnSet, &diff->on_set);
+        notify(world, table, other_table, row, count, EcsOnSet, &diff->on_set, 
+            EcsIsA);
     }
 }
 
@@ -5530,16 +5607,17 @@ void flecs_notify_on_remove(
 
     if (count) {
         if (diff->un_set.count) {
-            notify(world, table, other_table, row, count, EcsUnSet, &diff->un_set);
+            notify(world, table, other_table, row, count, EcsUnSet, &diff->un_set, 0);
         }
 
         if (table->flags & EcsTableHasOnRemove && diff->removed.count) {
             notify(world, table, other_table, row, count, EcsOnRemove, 
-                &diff->removed);
+                &diff->removed, 0);
         }
 
         if (table->flags & EcsTableHasIsA && diff->on_set.count) {
-            notify(world, table, other_table, row, count, EcsOnSet, &diff->on_set);
+            notify(world, table, other_table, row, count, EcsOnSet, 
+                &diff->on_set, 0);
         }
     }
 }
@@ -5554,13 +5632,13 @@ void flecs_notify_on_set(
 {
     ecs_data_t *data = &table->storage;
 
-    ecs_entity_t *entities = ecs_vector_first(data->entities, ecs_entity_t);        
+    ecs_entity_t *entities = ecs_vector_get(data->entities, ecs_entity_t, row);
     ecs_assert(entities != NULL, ECS_INTERNAL_ERROR, NULL);
     ecs_assert(row < ecs_vector_count(data->entities), 
         ECS_INTERNAL_ERROR, NULL);
     ecs_assert((row + count) <= ecs_vector_count(data->entities), 
         ECS_INTERNAL_ERROR, NULL);
-    entities = ECS_OFFSET(entities, ECS_SIZEOF(ecs_entity_t) * row);
+    entities = ecs_offset(entities, ecs_entity_t, row);
 
     ecs_ids_t local_ids;
     if (!ids) {
@@ -5600,7 +5678,7 @@ void flecs_notify_on_set(
 
     /* Run OnSet notifications */
     if (table->flags & EcsTableHasOnSet && ids->count) {
-        notify(world, table, NULL, row, count, EcsOnSet, ids);
+        notify(world, table, NULL, row, count, EcsOnSet, ids, 0);
     }
 }
 
@@ -5701,7 +5779,7 @@ bool ecs_commit(
         diff.added = *removed;
     }
     
-    commit(world, entity, &info, table, &diff, true);
+    commit(world, entity, &info, table, &diff, true, true);
 
     return src_table != table;
 error:
@@ -5882,6 +5960,7 @@ ecs_table_t *traverse_from_expr(
             }
 
             if (ecs_term_finalize(world, name, &term)) {
+                ecs_term_fini(&term);
                 if (error) {
                     *error = true;
                 }
@@ -5889,6 +5968,7 @@ ecs_table_t *traverse_from_expr(
             }
 
             if (!ecs_term_is_trivial(&term)) {
+                ecs_term_fini(&term);
                 if (error) {
                     *error = true;
                 }
@@ -6025,7 +6105,6 @@ int traverse_add(
         }
     }
 
-
     /* Find destination table */
     ecs_table_diff_t diff = ECS_TABLE_DIFF_INIT;
 
@@ -6052,7 +6131,20 @@ int traverse_add(
     ecs_id_t id;
     const ecs_id_t *ids = desc->add;
     while ((i < ECS_MAX_ADD_REMOVE) && (id = ids[i ++])) {
-        table = table_append(world, table, id, &diff);
+        bool should_add = true;
+        if (ECS_HAS_ROLE(id, PAIR) && ECS_PAIR_RELATION(id) == EcsChildOf) {
+            scope = ECS_PAIR_OBJECT(id);
+            if (!desc->entity || (name && !name_assigned)) {
+                /* If name is added to entity, pass scope to add_path instead
+                 * of adding it to the table. The provided name may have nested
+                 * elements, in which case the parent provided here is not the
+                 * parent the entity will end up with. */
+                should_add = false;
+            }
+        }
+        if (should_add) {
+            table = table_append(world, table, id, &diff);
+        }
     }
 
     /* Add components from the 'add_expr' expression */
@@ -6072,7 +6164,7 @@ int traverse_add(
     /* Commit entity to destination table */
     if (src_table != table) {
         ecs_defer_begin(world);
-        commit(world, result, &info, table, &diff, true);
+        commit(world, result, &info, table, &diff, true, true);
         ecs_defer_end(world);
     }
 
@@ -6130,7 +6222,18 @@ void deferred_add_remove(
     ecs_id_t id;
     const ecs_id_t *ids = desc->add;
     while ((i < ECS_MAX_ADD_REMOVE) && (id = ids[i ++])) {
-        ecs_add_id(world, entity, id);
+        bool defer = true;
+        if (ECS_HAS_ROLE(id, PAIR) && ECS_PAIR_RELATION(id) == EcsChildOf) {
+            scope = ECS_PAIR_OBJECT(id);
+            if (!desc->entity || (name && !name_assigned)) {
+                /* New named entities are created by temporarily going out of
+                 * readonly mode to ensure no duplicates are created. */
+                defer = false;
+            }
+        }
+        if (defer) {
+            ecs_add_id(world, entity, id);
+        }
     }
 
     /* Add components from the 'add_expr' expression */
@@ -6144,7 +6247,12 @@ void deferred_add_remove(
 
     /* Set name */
     if (name && !name_assigned) {
-        ecs_add_path_w_sep(world, entity, scope, name, sep, NULL);   
+        /* To prevent creating two entities with the same name, temporarily go
+         * out of readonly mode if it's safe to do so. */
+        ecs_suspend_readonly_state_t state;
+        ecs_world_t *real_world = flecs_suspend_readonly(world, &state);
+        ecs_add_path_w_sep(real_world, entity, scope, name, sep, NULL);
+        flecs_resume_readonly(real_world, &state);
     }
 
     /* Currently it's not supported to set the symbol from a deferred context */
@@ -6164,7 +6272,7 @@ ecs_entity_t ecs_entity_init(
     ecs_check(desc->_canary == 0, ECS_INVALID_PARAMETER, NULL);
 
     ecs_stage_t *stage = flecs_stage_from_world(&world);
-    ecs_entity_t scope = ecs_get_scope(world);
+    ecs_entity_t scope = stage->scope;
     ecs_id_t with = ecs_get_with(world);
 
     const char *name = desc->name;
@@ -6202,6 +6310,18 @@ ecs_entity_t ecs_entity_init(
     ecs_entity_t result = desc->entity;
     if (!result) {
         if (name) {
+            /* If add array contains a ChildOf pair, use it as scope instead */
+            const ecs_id_t *ids = desc->add;
+            ecs_id_t id;
+            int32_t i = 0;
+            while ((i < ECS_MAX_ADD_REMOVE) && (id = ids[i ++])) {
+                if (ECS_HAS_ROLE(id, PAIR) && 
+                    (ECS_PAIR_RELATION(id) == EcsChildOf))
+                {
+                    scope = ECS_PAIR_OBJECT(id);
+                }
+            }
+
             result = ecs_lookup_path_w_sep(
                 world, scope, name, sep, root_sep, false);
             if (result) {
@@ -6220,7 +6340,8 @@ ecs_entity_t ecs_entity_init(
                 ECS_INTERNAL_ERROR, NULL);
         }
     } else {
-        ecs_assert(ecs_is_valid(world, result), ECS_INVALID_PARAMETER, NULL);
+        /* Make sure provided id is either alive or revivable */
+        ecs_ensure(world, result);
 
         name_assigned = ecs_has_pair(
             world, result, ecs_id(EcsIdentifier), EcsName);
@@ -6323,32 +6444,8 @@ ecs_entity_t ecs_component_init(
     ecs_check(desc != NULL, ECS_INVALID_PARAMETER, NULL);
     ecs_check(desc->_canary == 0, ECS_INVALID_PARAMETER, NULL);
 
-    world = (ecs_world_t*)ecs_get_world(world);
-
-    bool is_readonly = world->is_readonly;
-    bool is_deferred = ecs_is_deferred(world);
-    int32_t defer_count = 0;
-    ecs_vector_t *defer_queue = NULL;
-    ecs_stage_t *stage = NULL;
-
-    /* If world is readonly or deferring is enabled, component registration can
-     * still happen directly on the main storage, but only if the application
-     * is singlethreaded. */
-    if (is_readonly || is_deferred) {
-        ecs_assert(ecs_get_stage_count(world) <= 1, 
-            ECS_INVALID_WHILE_ITERATING, NULL);
-
-        /* Silence readonly warnings */
-        world->is_readonly = false;
-
-        /* Hack around safety checks (this ought to look ugly) */
-        ecs_world_t *temp_world = world;
-        stage = flecs_stage_from_world(&temp_world);
-        defer_count = stage->defer;
-        defer_queue = stage->defer_queue;
-        stage->defer = 0;
-        stage->defer_queue = NULL;
-    }
+    ecs_suspend_readonly_state_t readonly_state;
+    world = flecs_suspend_readonly(world, &readonly_state);
 
     ecs_entity_desc_t entity_desc = desc->entity;
     entity_desc.use_low_id = true;
@@ -6393,12 +6490,7 @@ ecs_entity_t ecs_component_init(
     /* Ensure components cannot be deleted */
     ecs_add_pair(world, result, EcsOnDelete, EcsThrow);
 
-    if (is_readonly || is_deferred) {
-        /* Restore readonly state / defer count */
-        world->is_readonly = is_readonly;
-        stage->defer = defer_count;
-        stage->defer_queue = defer_queue;
-    }
+    flecs_resume_readonly(world, &readonly_state);
     
     ecs_assert(result != 0, ECS_INTERNAL_ERROR, NULL);
     ecs_assert(ecs_has(world, result, EcsComponent), ECS_INTERNAL_ERROR, NULL);
@@ -6647,12 +6739,12 @@ void delete_objects(
     if (data) {
         ecs_entity_t *entities = ecs_vector_first(
             data->entities, ecs_entity_t);
+        ecs_record_t **records = ecs_vector_first(
+            data->record_ptrs, ecs_record_t*);
 
         int32_t i, count = ecs_vector_count(data->entities);
         for (i = 0; i < count; i ++) {
-            ecs_entity_t e = entities[i];
-            ecs_record_t *r = flecs_sparse_get(
-                world->store.entity_index, ecs_record_t, e);
+            ecs_record_t *r = records[i];
             
             /* If entity is flagged, it could have delete actions. */
             uint32_t flags;
@@ -6676,18 +6768,13 @@ void on_delete_object_action(
     ecs_id_t id,
     ecs_entity_t action)
 {
-    ecs_id_record_t *idr = flecs_get_id_record(world, id);
-    if (idr) {
-        const ecs_table_record_t *tables = flecs_id_record_tables(idr);
-        int32_t i, count = flecs_id_record_count(idr);
-
-        for (i = 0; i < count; i ++) {
-            const ecs_table_record_t *tr = &tables[i];
+    ecs_table_iter_t it;
+    ecs_id_record_t *idr;
+    if ((idr = flecs_table_iter(world, id, &it))) {
+        for (; it.cur < it.end; ++ it.cur) {
+            const ecs_table_record_t *tr = it.cur;
             ecs_table_t *table = tr->table;
-
-            if (!ecs_table_count(table)) {
-                continue;
-            }
+            ecs_assert(ecs_table_count(table) != 0, ECS_INTERNAL_ERROR, NULL);
 
             ecs_id_t *rel_id = ecs_vector_get(table->type, ecs_id_t, tr->column);
             ecs_assert(rel_id != NULL, ECS_INTERNAL_ERROR, NULL);
@@ -6696,18 +6783,16 @@ void on_delete_object_action(
             /* delete_object_action should be invoked for relations */
             ecs_assert(rel != 0, ECS_INTERNAL_ERROR,  NULL);
 
-            /* Get the record for the relation, to find the delete action */
-            ecs_id_record_t *idrr;
+            /* Find delete action for relation */
             if (!action) {
-                idrr = flecs_get_id_record(world, rel);
+                ecs_id_record_t *idrr = flecs_get_id_record(world, rel);
                 if (idrr) {
-                    action =idrr->on_delete_object;
-                } 
+                    action = ECS_ID_ON_DELETE_OBJECT(idrr->flags);
+                }
             }
-             
+
             if (!action || action == EcsRemove) {
                 remove_from_table(world, table, id, tr->column, tr->count);
-                i = 0; count = flecs_id_record_count(idr);
             } else if (action == EcsDelete) {
                 delete_objects(world, table);
             } else if (action == EcsThrow) {
@@ -6715,7 +6800,7 @@ void on_delete_object_action(
             }
         }
 
-        flecs_clear_id_record(world, id);
+        flecs_clear_id_record(world, id, idr);
     }
 }
 
@@ -6725,21 +6810,19 @@ void on_delete_id_action(
     ecs_id_t id,
     ecs_entity_t action)
 {
-    ecs_id_record_t *idr = flecs_get_id_record(world, id);
+    ecs_table_iter_t it;
+    ecs_id_record_t *idr = flecs_table_iter(world, id, &it);
     if (idr) {
         if (!action) {
-            action = idr->on_delete;
+            action = ECS_ID_ON_DELETE(idr->flags);
         }
 
         if (action == EcsThrow) {
             throw_invalid_delete(world, id);
         }
 
-        const ecs_table_record_t *tables = flecs_id_record_tables(idr);
-        int32_t i, count = flecs_id_record_count(idr);
-
-        for (i = 0; i < count ; i ++) {
-            const ecs_table_record_t *tr = &tables[i];
+        for (; it.cur < it.end; ++ it.cur) {
+            const ecs_table_record_t *tr = it.cur;
             ecs_table_t *table = tr->table;
 
             if (!action || action == EcsRemove) {
@@ -6749,7 +6832,7 @@ void on_delete_id_action(
             }
         }
 
-        flecs_clear_id_record(world, id);
+        flecs_clear_id_record(world, id, idr);
     }
 }
 
@@ -6951,7 +7034,8 @@ ecs_entity_t ecs_clone(
     ecs_table_diff_t diff = {.added = flecs_type_to_ids(src_type)};
 
     ecs_entity_info_t dst_info = {0};
-    dst_info.row = new_entity(world, dst, &dst_info, src_table, &diff, true);
+    dst_info.row = new_entity(world, dst, &dst_info, src_table, &diff, 
+        true, true);
 
     if (copy_value) {
         flecs_table_move(world, dst, src, src_table, dst_info.data, 
@@ -7005,7 +7089,7 @@ const void* ecs_get_id(
     }
 
     if (!tr) {
-       return get_base_component(world, table, id, idr, NULL, 0);
+       return get_base_component(world, table, id, idr, 0);
     }
 
     int32_t row = ECS_RECORD_TO_ROW(r->row);
@@ -7609,11 +7693,6 @@ bool ecs_is_valid(
     if (!entity) {
         return false;
     }
-
-    /* Entities should not contain data in dead zone bits */
-    if (entity & ~0xFF00FFFFFFFFFFFF) {
-        return false;
-    }
     
     /* Make sure we're not working with a stage */
     world = ecs_get_world(world);
@@ -7622,16 +7701,26 @@ bool ecs_is_valid(
      * stripped away. Just test if the entity is 0 or not. */
     if (ECS_HAS_ROLE(entity, PAIR)) {
         return ECS_PAIR_RELATION(entity) != 0;
-    } else
+    }
+
+    /* Entities should not contain data in dead zone bits */
+    if (entity & ~0xFF00FFFFFFFFFFFF) {
+        return false;
+    }
+
     if (entity & ECS_ROLE) {
         return ecs_entity_t_lo(entity) != 0;
     }
 
-    /* An id may not yet exist in the world which does not mean it cannot be
-     * used as an entity identifier. An example is when a hard-coded entity id
-     * is used. However, if the entity id does exist in the world, it must be
-     * alive. */
-    return !ecs_exists(world, entity) || ecs_is_alive(world, entity);
+    /* If entity doesn't exist in the world, the id is valid as long as the
+     * generation is 0. Using a non-existing id with a non-zero generation
+     * requires calling ecs_ensure first. */
+    if (!ecs_exists(world, entity)) {
+        return ECS_GENERATION(entity) == 0;
+    }
+
+    /* If id exists, it must be alive (the generation count must match) */
+    return ecs_is_alive(world, entity);
 error:
     return false;
 }
@@ -7699,14 +7788,53 @@ void ecs_ensure(
     ecs_poly_assert(world, ecs_world_t); /* Cannot be a stage */
     ecs_check(entity != 0, ECS_INVALID_PARAMETER, NULL);
 
-    if (ecs_eis_is_alive(world, entity)) {
-        /* Nothing to be done, already alive */
+    /* Check if a version of the provided id is alive */
+    ecs_entity_t any = ecs_get_alive(world, ecs_strip_generation(entity));
+    if (any == entity) {
+        /* If alive and equal to the argument, there's nothing left to do */
         return;
     }
+
+    /* If the id is currently alive but did not match the argument, fail */
+    ecs_check(!any, ECS_INVALID_PARAMETER, NULL);
+
+    /* Set generation if not alive. The sparse set checks if the provided
+     * id matches its own generation which is necessary for alive ids. This
+     * check would cause ecs_ensure to fail if the generation of the 'entity'
+     * argument doesn't match with its generation.
+     * 
+     * While this could've been addressed in the sparse set, this is a rare
+     * scenario that can only be triggered by ecs_ensure. Implementing it here
+     * allows the sparse set to not do this check, which is more efficient. */
+    ecs_eis_set_generation(world, entity);
 
     /* Ensure id exists. The underlying datastructure will verify that the
      * generation count matches the provided one. */
     ecs_eis_ensure(world, entity);
+error:
+    return;
+}
+
+void ecs_ensure_id(
+    ecs_world_t *world,
+    ecs_id_t id)
+{
+    if (ECS_HAS_ROLE(id, PAIR) || ECS_HAS_ROLE(id, CASE)) {
+        ecs_entity_t r = ECS_PAIR_RELATION(id);
+        ecs_entity_t o = ECS_PAIR_OBJECT(id);
+
+        ecs_check(r != 0, ECS_INVALID_PARAMETER, NULL);
+        ecs_check(o != 0, ECS_INVALID_PARAMETER, NULL);
+
+        if (ecs_get_alive(world, r) == 0) {
+            ecs_ensure(world, r);
+        }
+        if (ecs_get_alive(world, o) == 0) {
+            ecs_ensure(world, o);
+        }
+    } else {
+        ecs_ensure(world, id & ECS_COMPONENT_MASK);
+    }
 error:
     return;
 }
@@ -8077,23 +8205,26 @@ bool remove_invalid(
             if (!obj || !is_entity_valid(world, obj)) {
                 /* Check the relation's policy for deleted objects */
                 ecs_id_record_t *idr = flecs_get_id_record(world, rel);
-                if (!idr || (idr->on_delete_object == EcsRemove)) {
-                    *id_out = 0;
-                    return true;
-                } else {
-                    if (idr->on_delete_object == EcsDelete) {
+                if (idr) {
+                    ecs_entity_t action = ECS_ID_ON_DELETE_OBJECT(idr->flags);
+                    if (action == EcsDelete) {
                         /* Entity should be deleted, don't bother checking
                          * other ids */
                         return false;
-                    } else if (idr->on_delete_object == EcsThrow) {
+                    } else if (action == EcsThrow) {
                         /* If policy is throw this object should not have
                          * been deleted */
                         throw_invalid_delete(world, id);
+                    } else {
+                        *id_out = 0;
+                        return true;
                     }
+                } else {
+                    *id_out = 0;
+                    return true;
                 }
             }
         }
-
     } else {
         id &= ECS_COMPONENT_MASK;
         if (!is_entity_valid(world, id)) {
@@ -8757,6 +8888,8 @@ bool ecs_staging_begin(
 {
     ecs_poly_assert(world, ecs_world_t);
 
+    flecs_process_pending_tables(world);
+
     int32_t i, count = ecs_get_stage_count(world);
     for (i = 0; i < count; i ++) {
         ecs_defer_begin(ecs_get_stage(world, i));
@@ -8902,6 +9035,15 @@ error:
     return false;
 }
 
+
+struct ecs_vector_t {
+    int32_t count;
+    int32_t size;
+    
+#ifndef NDEBUG
+    int64_t elem_size; /* Used in debug mode to validate size */
+#endif
+};
 
 /** Resize the vector buffer */
 static
@@ -9068,6 +9210,30 @@ void* _ecs_vector_add(
     vector->count = 1;
     vector->size = 2;
     return ECS_OFFSET(vector, offset);
+}
+
+void* _ecs_vector_insert_at(
+    ecs_vector_t **vec,
+    ecs_size_t elem_size,
+    int16_t offset,
+    int32_t index)
+{
+    ecs_assert(vec != NULL, ECS_INTERNAL_ERROR, NULL);
+    int32_t count = vec[0]->count;
+    if (index == count) {
+        return _ecs_vector_add(vec, elem_size, offset);
+    }
+    ecs_assert(index < count, ECS_INTERNAL_ERROR, NULL);
+    ecs_assert(index >= 0, ECS_INTERNAL_ERROR, NULL);
+
+    _ecs_vector_add(vec, elem_size, offset);
+    void *start = _ecs_vector_get(*vec, elem_size, offset, index);
+    if (index < count) {
+        ecs_os_memmove(ECS_OFFSET(start, elem_size), start, 
+            (count - index) * elem_size);
+    }
+
+    return start;
 }
 
 int32_t _ecs_vector_move_index(
@@ -9906,6 +10072,7 @@ void* _flecs_sparse_remove_get(
         dense_array[dense] = index | inc_gen(cur_gen);
         
         int32_t count = sparse->count;
+        
         if (dense == (count - 1)) {
             /* If dense is the last used element, simply decrease count */
             sparse->count --;
@@ -10547,7 +10714,7 @@ int32_t flecs_switch_next(
 }
 
 
-#ifndef _MSC_VER
+#ifdef ECS_TARGET_GNU
 #pragma GCC diagnostic ignored "-Wimplicit-fallthrough"
 #endif
 
@@ -10568,12 +10735,12 @@ lookup3.c, by Bob Jenkins, May 2006, Public Domain.
 -------------------------------------------------------------------------------
 */
 
-#ifdef _MSC_VER
+#ifdef ECS_TARGET_MSVC
 //FIXME
 #else
 #include <sys/param.h>  /* attempt to define endianness */
 #endif
-#ifdef linux
+#ifdef ECS_TARGET_LINUX
 # include <endian.h>    /* attempt to define endianness */
 #endif
 
@@ -11013,6 +11180,8 @@ error:
     return;
 }
 
+#include <stdio.h>
+#include <math.h>
 
 /**
  *  stm32tpl --  STM32 C++ Template Peripheral Library
@@ -11041,13 +11210,33 @@ static
 int ecs_strbuf_ftoa(
     ecs_strbuf_t *out, 
     double f, 
-    int precision)
+    int precision,
+    char nan_delim)
 {
     char buf[64];
 	char * ptr = buf;
 	char * p1;
 	char c;
 	int64_t intPart;
+
+    if (isnan(f)) {
+        if (nan_delim) {
+            ecs_strbuf_appendch(out, nan_delim);
+            ecs_strbuf_appendstr(out, "NaN");
+            return ecs_strbuf_appendch(out, nan_delim);
+        } else {
+            return ecs_strbuf_appendstr(out, "NaN");
+        }
+    }
+    if (isinf(f)) {
+        if (nan_delim) {
+            ecs_strbuf_appendch(out, nan_delim);
+            ecs_strbuf_appendstr(out, "Inf");
+            return ecs_strbuf_appendch(out, nan_delim);
+        } else {
+            return ecs_strbuf_appendstr(out, "Inf");
+        }
+    }
 
 	if (precision > MAX_PRECISION) {
 		precision = MAX_PRECISION;
@@ -11405,10 +11594,11 @@ bool ecs_strbuf_appendch(
 
 bool ecs_strbuf_appendflt(
     ecs_strbuf_t *b,
-    double flt)
+    double flt,
+    char nan_delim)
 {
     ecs_assert(b != NULL, ECS_INVALID_PARAMETER, NULL); 
-    return ecs_strbuf_ftoa(b, flt, 2);
+    return ecs_strbuf_ftoa(b, flt, 2, nan_delim);
 }
 
 bool ecs_strbuf_appendstr_zerocpy(
@@ -11624,6 +11814,7 @@ int32_t ecs_strbuf_written(
     return b->size + b->current->pos;
 }
 
+#include <math.h>
 
 /* The ratio used to determine whether the map should rehash. If
  * (element_count * LOAD_FACTOR) > bucket_count, bucket count is increased. */
@@ -11640,10 +11831,25 @@ typedef struct ecs_bucket_t {
 
 struct ecs_map_t {
     ecs_bucket_t *buckets;
-    int32_t elem_size;
+    int16_t elem_size;
+    uint8_t bucket_shift;
     int32_t bucket_count;
     int32_t count;
 };
+
+static
+uint8_t ecs_log2(uint32_t v) {
+    static const uint8_t log2table[32] = 
+        {0, 9,  1,  10, 13, 21, 2,  29, 11, 14, 16, 18, 22, 25, 3, 30,
+         8, 12, 20, 28, 15, 17, 24, 7,  19, 27, 23, 6,  26, 5,  4, 31};
+
+    v |= v >> 1;
+    v |= v >> 2;
+    v |= v >> 4;
+    v |= v >> 8;
+    v |= v >> 16;
+    return log2table[(uint32_t)(v * 0x07C4ACDDU) >> 27];
+}
 
 /* Get bucket count for number of elements */
 static
@@ -11653,16 +11859,25 @@ int32_t get_bucket_count(
     return flecs_next_pow_of_2((int32_t)((float)element_count * LOAD_FACTOR));
 }
 
+/* Get bucket shift amount for a given bucket count */
+static
+uint8_t get_bucket_shift (
+    int32_t bucket_count)
+{
+    return (uint8_t)(64u - ecs_log2((uint32_t)bucket_count));
+}
+
 /* Get bucket index for provided map key */
 static
-int32_t get_bucket_id(
-    int32_t bucket_count,
+int32_t get_bucket_index(
+    const ecs_map_t *map,
+    uint16_t bucket_shift,
     ecs_map_key_t key) 
 {
-    ecs_assert(bucket_count > 0, ECS_INTERNAL_ERROR, NULL);
-    int32_t result = (int32_t)(key & ((uint64_t)bucket_count - 1));
-    ecs_assert(result < INT32_MAX, ECS_INTERNAL_ERROR, NULL);
-    return result;
+    ecs_assert(bucket_shift != 0, ECS_INTERNAL_ERROR, NULL);
+    ecs_assert(map->bucket_shift == bucket_shift, ECS_INTERNAL_ERROR, NULL);
+    (void)map;
+    return (int32_t)((11400714819323198485ull * key) >> bucket_shift);
 }
 
 /* Get bucket for key */
@@ -11671,14 +11886,10 @@ ecs_bucket_t* get_bucket(
     const ecs_map_t *map,
     ecs_map_key_t key)
 {
-    int32_t bucket_count = map->bucket_count;
-    if (!bucket_count) {
-        return NULL;
-    }
-
-    int32_t bucket_id = get_bucket_id(bucket_count, key);
-    ecs_assert(bucket_id < bucket_count, ECS_INTERNAL_ERROR, NULL);
-
+    ecs_assert(map->bucket_shift == get_bucket_shift(map->bucket_count), 
+        ECS_INTERNAL_ERROR, NULL);
+    int32_t bucket_id = get_bucket_index(map, map->bucket_shift, key);
+    ecs_assert(bucket_id < map->bucket_count, ECS_INTERNAL_ERROR, NULL);
     return &map->buckets[bucket_id];
 }
 
@@ -11690,10 +11901,14 @@ void ensure_buckets(
 {
     int32_t bucket_count = map->bucket_count;
     new_count = flecs_next_pow_of_2(new_count);
+    if (new_count < 2) {
+        new_count = 2;
+    }
+
     if (new_count && new_count > bucket_count) {
         map->buckets = ecs_os_realloc(map->buckets, new_count * ECS_SIZEOF(ecs_bucket_t));
         map->bucket_count = new_count;
-
+        map->bucket_shift = get_bucket_shift(new_count);
         ecs_os_memset(
             ECS_OFFSET(map->buckets, bucket_count * ECS_SIZEOF(ecs_bucket_t)), 
             0, (new_count - bucket_count) * ECS_SIZEOF(ecs_bucket_t));
@@ -11733,11 +11948,8 @@ ecs_bucket_t* ensure_bucket(
     ecs_map_t *map,
     ecs_map_key_t key)
 {
-    if (!map->bucket_count) {
-        ensure_buckets(map, 2);
-    }
-
-    int32_t bucket_id = get_bucket_id(map->bucket_count, key);
+    ecs_assert(map->bucket_count >= 2, ECS_INTERNAL_ERROR, NULL);
+    int32_t bucket_id = get_bucket_index(map, map->bucket_shift, key);
     ecs_assert(bucket_id >= 0, ECS_INTERNAL_ERROR, NULL);
     return &map->buckets[bucket_id];
 }
@@ -11818,18 +12030,17 @@ void rehash(
     ecs_assert(bucket_count != 0, ECS_INTERNAL_ERROR, NULL);
     ecs_assert(bucket_count > map->bucket_count, ECS_INTERNAL_ERROR, NULL);
 
-    ecs_size_t elem_size = map->elem_size;
-
     ensure_buckets(map, bucket_count);
 
     ecs_bucket_t *buckets = map->buckets;
     ecs_assert(buckets != NULL, ECS_INTERNAL_ERROR, NULL);
-    
+    ecs_size_t elem_size = map->elem_size;
+    uint16_t bucket_shift = map->bucket_shift;
     int32_t bucket_id;
 
     /* Iterate backwards as elements could otherwise be moved to existing
-        * buckets which could temporarily cause the number of elements in a
-        * bucket to exceed BUCKET_COUNT. */
+     * buckets which could temporarily cause the number of elements in a
+     * bucket to exceed BUCKET_COUNT. */
     for (bucket_id = bucket_count - 1; bucket_id >= 0; bucket_id --) {
         ecs_bucket_t *bucket = &buckets[bucket_id];
 
@@ -11840,7 +12051,7 @@ void rehash(
         for (i = 0; i < count; i ++) {
             ecs_map_key_t key = key_array[i];
             void *elem = GET_ELEM(payload_array, elem_size, i);
-            int32_t new_bucket_id = get_bucket_id(bucket_count, key);
+            int32_t new_bucket_id = get_bucket_index(map, bucket_shift, key);
 
             if (new_bucket_id != bucket_id) {
                 ecs_bucket_t *new_bucket = &buckets[new_bucket_id];
@@ -11865,13 +12076,12 @@ ecs_map_t* _ecs_map_new(
 {
     ecs_map_t *result = ecs_os_calloc(ECS_SIZEOF(ecs_map_t) * 1);
     ecs_assert(result != NULL, ECS_OUT_OF_MEMORY, NULL);
-
-    int32_t bucket_count = get_bucket_count(element_count);
+    ecs_assert(elem_size < INT16_MAX, ECS_INVALID_PARAMETER, NULL);
 
     result->count = 0;
-    result->elem_size = elem_size;
+    result->elem_size = (int16_t)elem_size;
 
-    ensure_buckets(result, bucket_count);
+    ensure_buckets(result, get_bucket_count(element_count));
 
     return result;
 }
@@ -12024,6 +12234,7 @@ void ecs_map_clear(
     ecs_assert(map != NULL, ECS_INVALID_PARAMETER, NULL);
     clear_buckets(map);
     map->count = 0;
+    ensure_buckets(map, 2);
 }
 
 ecs_map_iter_t ecs_map_iter(
@@ -12260,7 +12471,7 @@ void* _flecs_hashmap_get(
 flecs_hashmap_result_t _flecs_hashmap_ensure(
     const ecs_hashmap_t map,
     ecs_size_t key_size,
-    void *key,
+    const void *key,
     ecs_size_t value_size)
 {
     ecs_assert(map.key_size == key_size, ECS_INVALID_PARAMETER, NULL);
@@ -12386,6 +12597,9 @@ void* _flecs_hashmap_next(
 
 
 #ifdef FLECS_LOG
+
+#include <stdio.h>
+#include <ctype.h>
 
 static
 char *ecs_vasprintf(
@@ -12728,10 +12942,12 @@ const char* ecs_strerror(
     ECS_ERR_STR(ECS_ALREADY_DEFINED);
     ECS_ERR_STR(ECS_INVALID_COMPONENT_SIZE);
     ECS_ERR_STR(ECS_INVALID_COMPONENT_ALIGNMENT);
+    ECS_ERR_STR(ECS_NAME_IN_USE);
     ECS_ERR_STR(ECS_OUT_OF_MEMORY);
     ECS_ERR_STR(ECS_OPERATION_FAILED);
     ECS_ERR_STR(ECS_INVALID_CONVERSION);
     ECS_ERR_STR(ECS_MODULE_UNDEFINED);
+    ECS_ERR_STR(ECS_MISSING_SYMBOL);
     ECS_ERR_STR(ECS_COLUMN_INDEX_OUT_OF_RANGE);
     ECS_ERR_STR(ECS_COLUMN_IS_NOT_SHARED);
     ECS_ERR_STR(ECS_COLUMN_IS_SHARED);
@@ -12750,6 +12966,7 @@ const char* ecs_strerror(
     ECS_ERR_STR(ECS_INVALID_OPERATION);
     ECS_ERR_STR(ECS_CONSTRAINT_VIOLATED);
     ECS_ERR_STR(ECS_LOCKED_STORAGE);
+    ECS_ERR_STR(ECS_ID_IN_USE);
     }
 
     return "unknown error code";
@@ -14230,7 +14447,6 @@ void FlecsPipelineImport(
 
 #ifdef FLECS_TIMER
 
-
 static
 void AddTickSource(ecs_iter_t *it) {
     int32_t i;
@@ -14521,6 +14737,408 @@ void FlecsTimerImport(
 
 #endif
 
+#include <ctype.h>
+
+/* Utilities for C++ API */
+
+#ifdef FLECS_CPP
+
+/* Convert compiler-specific typenames extracted from __PRETTY_FUNCTION__ to
+ * a uniform identifier */
+
+#define ECS_CONST_PREFIX "const "
+#define ECS_STRUCT_PREFIX "struct "
+#define ECS_CLASS_PREFIX "class "
+#define ECS_ENUM_PREFIX "enum "
+
+#define ECS_CONST_LEN (-1 + (ecs_size_t)sizeof(ECS_CONST_PREFIX))
+#define ECS_STRUCT_LEN (-1 + (ecs_size_t)sizeof(ECS_STRUCT_PREFIX))
+#define ECS_CLASS_LEN (-1 + (ecs_size_t)sizeof(ECS_CLASS_PREFIX))
+#define ECS_ENUM_LEN (-1 + (ecs_size_t)sizeof(ECS_ENUM_PREFIX))
+
+static
+ecs_size_t ecs_cpp_strip_prefix(
+    char *typeName,
+    ecs_size_t len,
+    const char *prefix,
+    ecs_size_t prefix_len)
+{
+    if ((len > prefix_len) && !ecs_os_strncmp(typeName, prefix, prefix_len)) {
+        ecs_os_memmove(typeName, typeName + prefix_len, len - prefix_len);
+        typeName[len - prefix_len] = '\0';
+        len -= prefix_len;
+    }
+    return len;
+}
+
+static 
+void ecs_cpp_trim_type_name(
+    char *typeName) 
+{
+    ecs_size_t len = ecs_os_strlen(typeName);
+
+    len = ecs_cpp_strip_prefix(typeName, len, ECS_CONST_PREFIX, ECS_CONST_LEN);
+    len = ecs_cpp_strip_prefix(typeName, len, ECS_STRUCT_PREFIX, ECS_STRUCT_LEN);
+    len = ecs_cpp_strip_prefix(typeName, len, ECS_CLASS_PREFIX, ECS_CLASS_LEN);
+    len = ecs_cpp_strip_prefix(typeName, len, ECS_ENUM_PREFIX, ECS_ENUM_LEN);
+
+    while (typeName[len - 1] == ' ' ||
+            typeName[len - 1] == '&' ||
+            typeName[len - 1] == '*') 
+    {
+        len --;
+        typeName[len] = '\0';
+    }
+
+    /* Remove const at end of string */
+    if (len > ECS_CONST_LEN) {
+        if (!ecs_os_strncmp(&typeName[len - ECS_CONST_LEN], " const", ECS_CONST_LEN)) {
+            typeName[len - ECS_CONST_LEN] = '\0';
+        }
+        len -= ECS_CONST_LEN;
+    }
+
+    /* Check if there are any remaining "struct " strings, which can happen
+     * if this is a template type on msvc. */
+    if (len > ECS_STRUCT_LEN) {
+        char *ptr = typeName;
+        while ((ptr = strstr(ptr + 1, ECS_STRUCT_PREFIX)) != 0) {
+            /* Make sure we're not matched with part of a longer identifier
+             * that contains 'struct' */
+            if (ptr[-1] == '<' || ptr[-1] == ',' || isspace(ptr[-1])) {
+                ecs_os_memmove(ptr, ptr + ECS_STRUCT_LEN, len - ECS_STRUCT_LEN);
+                len -= ECS_STRUCT_LEN;
+            }
+        }
+    }
+}
+
+char* ecs_cpp_get_type_name(
+    char *type_name, 
+    const char *func_name,
+    size_t len)
+{
+    memcpy(type_name, func_name + ECS_FUNC_NAME_FRONT(const char*, type_name), len);
+    type_name[len] = '\0';
+    ecs_cpp_trim_type_name(type_name);
+    return type_name;
+}
+
+char* ecs_cpp_get_symbol_name(
+    char *symbol_name,
+    const char *type_name,
+    size_t len)
+{
+    // Symbol is same as name, but with '::' replaced with '.'
+    ecs_os_strcpy(symbol_name, type_name);
+
+    char *ptr;
+    size_t i;
+    for (i = 0, ptr = symbol_name; i < len && *ptr; i ++, ptr ++) {
+        if (*ptr == ':') {
+            symbol_name[i] = '.';
+            ptr ++;
+        } else {
+            symbol_name[i] = *ptr;
+        }
+    }
+
+    symbol_name[i] = '\0';
+
+    return symbol_name;
+}
+
+static
+const char* cpp_func_rchr(
+    const char *func_name,
+    ecs_size_t func_name_len,
+    char ch)
+{
+    const char *r = strrchr(func_name, ch);
+    if ((r - func_name) >= (func_name_len - flecs_uto(ecs_size_t, ECS_FUNC_NAME_BACK))) {
+        return NULL;
+    }
+    return r;
+}
+
+static
+const char* cpp_func_max(
+    const char *a,
+    const char *b)
+{
+    if (a > b) return a;
+    return b;
+}
+
+char* ecs_cpp_get_constant_name(
+    char *constant_name,
+    const char *func_name,
+    size_t func_name_len)
+{
+    ecs_size_t f_len = flecs_uto(ecs_size_t, func_name_len);
+    const char *start = cpp_func_rchr(func_name, f_len, ' ');
+    start = cpp_func_max(start, cpp_func_rchr(func_name, f_len, ')'));
+    start = cpp_func_max(start, cpp_func_rchr(func_name, f_len, ':'));
+    start = cpp_func_max(start, cpp_func_rchr(func_name, f_len, ','));
+    ecs_assert(start != NULL, ECS_INVALID_PARAMETER, func_name);
+    start ++;
+    
+    ecs_size_t len = flecs_uto(ecs_size_t, 
+        (f_len - (start - func_name) - flecs_uto(ecs_size_t, ECS_FUNC_NAME_BACK)));
+    ecs_os_memcpy_n(constant_name, start, char, len);
+    constant_name[len] = '\0';
+    return constant_name;
+}
+
+// Names returned from the name_helper class do not start with ::
+// but are relative to the root. If the namespace of the type
+// overlaps with the namespace of the current module, strip it from
+// the implicit identifier.
+// This allows for registration of component types that are not in the 
+// module namespace to still be registered under the module scope.
+const char* ecs_cpp_trim_module(
+    ecs_world_t *world,
+    const char *type_name)
+{
+    ecs_entity_t scope = ecs_get_scope(world);
+    if (!scope) {
+        return type_name;
+    }
+
+    char *path = ecs_get_path_w_sep(world, 0, scope, "::", NULL);
+    if (path) {
+        const char *ptr = strrchr(type_name, ':');
+        ecs_assert(ptr != type_name, ECS_INTERNAL_ERROR, NULL);
+        if (ptr) {
+            ptr --;
+            ecs_assert(ptr[0] == ':', ECS_INTERNAL_ERROR, NULL);
+            ecs_size_t name_path_len = (ecs_size_t)(ptr - type_name);
+            if (name_path_len <= ecs_os_strlen(path)) {
+                if (!ecs_os_strncmp(type_name, path, name_path_len)) {
+                    type_name = &type_name[name_path_len + 2];
+                }
+            }
+        }
+    }
+    ecs_os_free(path);
+
+    return type_name;
+}
+
+// Validate registered component
+void ecs_cpp_component_validate(
+    ecs_world_t *world,
+    ecs_entity_t id,
+    const char *name,
+    size_t size,
+    size_t alignment,
+    bool implicit_name)
+{
+    /* If entity has a name check if it matches */
+    if (ecs_is_valid(world, id) && ecs_get_name(world, id) != NULL) {
+        if (!implicit_name && id >= EcsFirstUserComponentId) {
+#           ifndef NDEBUG
+            char *path = ecs_get_path_w_sep(
+                world, 0, id, "::", NULL);
+            if (ecs_os_strcmp(path, name)) {
+                ecs_err(
+                    "component '%s' already registered with name '%s'",
+                    name, path);
+                ecs_abort(ECS_INCONSISTENT_NAME, NULL);
+            }
+            ecs_os_free(path);
+#           endif
+        }
+    } else {
+        /* Ensure that the entity id valid */
+        if (!ecs_is_alive(world, id)) {
+            ecs_ensure(world, id);
+        }
+
+        /* Register name with entity, so that when the entity is created the
+        * correct id will be resolved from the name. Only do this when the
+        * entity is empty. */
+        ecs_add_path_w_sep(world, id, 0, name, "::", "::");
+    }
+
+    /* If a component was already registered with this id but with a 
+     * different size, the ecs_component_init function will fail. */
+
+    /* We need to explicitly call ecs_component_init here again. Even though
+     * the component was already registered, it may have been registered
+     * with a different world. This ensures that the component is registered
+     * with the same id for the current world. 
+     * If the component was registered already, nothing will change. */
+    ecs_entity_t ent = ecs_component_init(world, &(ecs_component_desc_t) {
+        .entity.entity = id,
+        .size = size,
+        .alignment = alignment
+    });
+    (void)ent;
+    ecs_assert(ent == id, ECS_INTERNAL_ERROR, NULL);
+}
+
+ecs_entity_t ecs_cpp_component_register(
+    ecs_world_t *world,
+    ecs_entity_t id,
+    const char *name,
+    const char *symbol,
+    ecs_size_t size,
+    ecs_size_t alignment)
+{
+    (void)size;
+    (void)alignment;
+
+    /* If the component is not yet registered, ensure no other component
+    * or entity has been registered with this name. Ensure component is 
+    * looked up from root. */
+    ecs_entity_t prev_scope = ecs_set_scope(world, 0);
+    ecs_entity_t ent;
+    if (id) {
+        ent = id;
+    } else {
+        ent = ecs_lookup_path_w_sep(world, 0, name, "::", "::", false);
+    }
+
+    ecs_set_scope(world, prev_scope);
+
+    /* If entity exists, compare symbol name to ensure that the component
+    * we are trying to register under this name is the same */
+    if (ent) {
+        if (!id && ecs_has(world, ent, EcsComponent)) {
+            const char *sym = ecs_get_symbol(world, ent);
+            ecs_assert(sym != NULL, ECS_MISSING_SYMBOL, 
+                ecs_get_name(world, ent));
+            (void)sym;
+
+#           ifndef NDEBUG
+            if (ecs_os_strcmp(sym, symbol)) {
+                ecs_err(
+                    "component with name '%s' is already registered for"\
+                    " type '%s' (trying to register for type '%s')",
+                        name, sym, symbol);
+                ecs_abort(ECS_NAME_IN_USE, NULL);
+            }
+#           endif
+
+        /* If an existing id was provided, it's possible that this id was
+         * registered with another type. Make sure that in this case at
+         * least the component size/alignment matches.
+         * This allows applications to alias two different types to the same
+         * id, which enables things like redefining a C type in C++ by
+         * inheriting from it & adding utility functions etc. */
+        } else {
+            const EcsComponent *comp = ecs_get(world, ent, EcsComponent);
+            if (comp) {
+                ecs_assert(comp->size == size,
+                    ECS_INVALID_COMPONENT_SIZE, NULL);
+                ecs_assert(comp->alignment == alignment,
+                    ECS_INVALID_COMPONENT_ALIGNMENT, NULL);
+            } else {
+                /* If the existing id is not a component, no checking is
+                 * needed. */
+            }
+        }
+
+    /* If no entity is found, lookup symbol to check if the component was
+     * registered under a different name. */
+    } else {
+        ent = ecs_lookup_symbol(world, symbol, false);
+        ecs_assert(ent == 0, ECS_INCONSISTENT_COMPONENT_ID, symbol);
+    }
+
+    return id;
+}
+
+ecs_entity_t ecs_cpp_component_register_explicit(
+    ecs_world_t *world,
+    ecs_entity_t s_id,
+    ecs_entity_t id,
+    const char *name,
+    const char *type_name,
+    const char *symbol,
+    size_t size,
+    size_t alignment)
+{
+    // If an explicit id is provided, it is possible that the symbol and
+    // name differ from the actual type, as the application may alias
+    // one type to another.
+    if (!id) {
+        if (!name) {
+            // If no name was provided, retrieve the name implicitly from
+            // the name_helper class.
+            name = ecs_cpp_trim_module(world, type_name);
+        }
+    } else {
+        // If an explicit id is provided but it has no name, inherit
+        // the name from the type.
+        if (!ecs_is_valid(world, id) || !ecs_get_name(world, id)) {
+            name = ecs_cpp_trim_module(world, type_name);
+        }
+    }
+
+    ecs_entity_t entity = ecs_component_init(world, &(ecs_component_desc_t){
+        .entity.entity = s_id,
+        .entity.name = name,
+        .entity.sep = "::",
+        .entity.root_sep = "::",
+        .entity.symbol = symbol,
+        .size = size,
+        .alignment = alignment
+    });
+
+    ecs_assert(entity != 0, ECS_INTERNAL_ERROR, NULL);
+    ecs_assert(!s_id || s_id == entity, ECS_INTERNAL_ERROR, NULL);
+
+    return entity;
+}
+
+ecs_entity_t ecs_cpp_enum_constant_register(
+    ecs_world_t *world,
+    ecs_entity_t parent,
+    ecs_entity_t id,
+    const char *name,
+    int value)
+{
+    ecs_suspend_readonly_state_t readonly_state;
+    world = flecs_suspend_readonly(world, &readonly_state);
+
+    const char *parent_name = ecs_get_name(world, parent);
+    ecs_size_t parent_name_len = ecs_os_strlen(parent_name);
+    if (!ecs_os_strncmp(name, parent_name, parent_name_len)) {
+        name += parent_name_len;
+        if (name[0] == '_') {
+            name ++;
+        }
+    }
+
+    ecs_entity_t prev = ecs_set_scope(world, parent);
+    id = ecs_entity_init(world, &(ecs_entity_desc_t) {
+        .entity = id,
+        .name = name
+    });
+    ecs_assert(id != 0, ECS_INVALID_OPERATION, name);
+    ecs_set_scope(world, prev);
+
+    ecs_set_id(world, id, parent, sizeof(int), &value);
+
+    flecs_resume_readonly(world, &readonly_state);
+
+    return id;
+}
+
+static int32_t flecs_reset_count = 0;
+
+int32_t ecs_cpp_reset_count_get(void) {
+    return flecs_reset_count;
+}
+
+int32_t ecs_cpp_reset_count_inc(void) {
+    return ++flecs_reset_count;
+}
+
+#endif
+
 
 #ifdef FLECS_DEPRECATED
 
@@ -14529,7 +15147,10 @@ void FlecsTimerImport(
 
 
 #ifdef FLECS_OS_API_IMPL
-#ifdef _MSC_VER
+#ifdef ECS_TARGET_MSVC
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <WinSock2.h>
 #include <windows.h>
 
@@ -14643,6 +15264,99 @@ void win_cond_wait(
     SleepConditionVariableCS(cond, mutex, INFINITE);
 }
 
+static bool win_time_initialized;
+static double win_time_freq;
+static LARGE_INTEGER win_time_start;
+
+static
+void win_time_setup(void) {
+    if ( win_time_initialized) {
+        return;
+    }
+    
+    win_time_initialized = true;
+
+    LARGE_INTEGER freq;
+    QueryPerformanceFrequency(&freq);
+    QueryPerformanceCounter(&win_time_start);
+    win_time_freq = (double)freq.QuadPart / 1000000000.0;
+}
+
+static
+void win_sleep(
+    int32_t sec, 
+    int32_t nanosec) 
+{
+    HANDLE timer;
+    LARGE_INTEGER ft;
+
+    ft.QuadPart = -((int64_t)sec * 10000000 + (int64_t)nanosec / 100);
+
+    timer = CreateWaitableTimer(NULL, TRUE, NULL);
+    SetWaitableTimer(timer, &ft, 0, NULL, NULL, 0);
+    WaitForSingleObject(timer, INFINITE);
+    CloseHandle(timer);
+}
+
+static double win_time_freq;
+static ULONG win_current_resolution;
+
+static
+void win_enable_high_timer_resolution(bool enable)
+{
+    HMODULE hntdll = GetModuleHandle((LPCTSTR)"ntdll.dll");
+    if (!hntdll) {
+        return;
+    }
+
+    LONG (__stdcall *pNtSetTimerResolution)(
+        ULONG desired, BOOLEAN set, ULONG * current);
+
+    pNtSetTimerResolution = (LONG(__stdcall*)(ULONG, BOOLEAN, ULONG*))
+        GetProcAddress(hntdll, "NtSetTimerResolution");
+
+    if(!pNtSetTimerResolution) {
+        return;
+    }
+
+    ULONG current, resolution = 10000; /* 1 ms */
+
+    if (!enable && win_current_resolution) {
+        pNtSetTimerResolution(win_current_resolution, 0, &current);
+        win_current_resolution = 0;
+        return;
+    } else if (!enable) {
+        return;
+    }
+
+    if (resolution == win_current_resolution) {
+        return;
+    }
+
+    if (win_current_resolution) {
+        pNtSetTimerResolution(win_current_resolution, 0, &current);
+    }
+
+    if (pNtSetTimerResolution(resolution, 1, &current)) {
+        /* Try setting a lower resolution */
+        resolution *= 2;
+        if(pNtSetTimerResolution(resolution, 1, &current)) return;
+    }
+
+    win_current_resolution = resolution;
+}
+
+static
+uint64_t win_time_now(void) {
+    uint64_t now;
+
+    LARGE_INTEGER qpc_t;
+    QueryPerformanceCounter(&qpc_t);
+    now = (uint64_t)(qpc_t.QuadPart / win_time_freq);
+
+    return now;
+}
+
 void ecs_set_os_api_impl(void) {
     ecs_os_set_api_defaults();
 
@@ -14661,13 +15375,25 @@ void ecs_set_os_api_impl(void) {
     api.cond_signal_ = win_cond_signal;
     api.cond_broadcast_ = win_cond_broadcast;
     api.cond_wait_ = win_cond_wait;
+    api.sleep_ = win_sleep;
+    api.now_ = win_time_now;
+    api.enable_high_timer_resolution_ = win_enable_high_timer_resolution;
+
+    win_time_setup();
 
     ecs_os_set_api(&api);
 }
 
 #else
-
 #include "pthread.h"
+
+#if defined(__APPLE__) && defined(__MACH__)
+#include <mach/mach_time.h>
+#elif defined(__EMSCRIPTEN__)
+#include <emscripten.h>
+#else
+#include <time.h>
+#endif
 
 static
 ecs_os_thread_t posix_thread_new(
@@ -14812,6 +15538,88 @@ void posix_cond_wait(
     }
 }
 
+static bool posix_time_initialized;
+
+#if defined(__APPLE__) && defined(__MACH__)
+static mach_timebase_info_data_t posix_osx_timebase;
+static uint64_t posix_time_start;
+#else
+static uint64_t posix_time_start;
+#endif
+
+static
+void posix_time_setup(void) {
+    if (posix_time_initialized) {
+        return;
+    }
+    
+    posix_time_initialized = true;
+
+    #if defined(__APPLE__) && defined(__MACH__)
+        mach_timebase_info(&posix_osx_timebase);
+        posix_time_start = mach_absolute_time();
+    #else
+        struct timespec ts;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        posix_time_start = (uint64_t)ts.tv_sec*1000000000 + (uint64_t)ts.tv_nsec; 
+    #endif
+}
+
+static
+void posix_sleep(
+    int32_t sec, 
+    int32_t nanosec) 
+{
+    struct timespec sleepTime;
+    ecs_assert(sec >= 0, ECS_INTERNAL_ERROR, NULL);
+    ecs_assert(nanosec >= 0, ECS_INTERNAL_ERROR, NULL);
+
+    sleepTime.tv_sec = sec;
+    sleepTime.tv_nsec = nanosec;
+    if (nanosleep(&sleepTime, NULL)) {
+        ecs_err("nanosleep failed");
+    }
+}
+
+static
+void posix_enable_high_timer_resolution(bool enable) {
+    (void)enable;
+}
+
+/* prevent 64-bit overflow when computing relative timestamp
+    see https://gist.github.com/jspohr/3dc4f00033d79ec5bdaf67bc46c813e3
+*/
+#if defined(ECS_TARGET_DARWIN)
+static
+int64_t posix_int64_muldiv(int64_t value, int64_t numer, int64_t denom) {
+    int64_t q = value / denom;
+    int64_t r = value % denom;
+    return q * numer + r * numer / denom;
+}
+#endif
+
+static
+uint64_t posix_time_now(void) {
+    ecs_assert(posix_time_initialized != 0, ECS_INTERNAL_ERROR, NULL);
+
+    uint64_t now;
+
+    #if defined(ECS_TARGET_DARWIN)
+        now = (uint64_t) posix_int64_muldiv(
+            (int64_t)mach_absolute_time(), 
+            (int64_t)posix_osx_timebase.numer, 
+            (int64_t)posix_osx_timebase.denom);
+    #elif defined(__EMSCRIPTEN__)
+        now = (long long)(emscripten_get_now() * 1000.0 * 1000);
+    #else
+        struct timespec ts;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        now = ((uint64_t)ts.tv_sec * 1000 * 1000 * 1000 + (uint64_t)ts.tv_nsec);
+    #endif
+
+    return now;
+}
+
 void ecs_set_os_api_impl(void) {
     ecs_os_set_api_defaults();
 
@@ -14830,6 +15638,11 @@ void ecs_set_os_api_impl(void) {
     api.cond_signal_ = posix_cond_signal;
     api.cond_broadcast_ = posix_cond_broadcast;
     api.cond_wait_ = posix_cond_wait;
+    api.sleep_ = posix_sleep;
+    api.now_ = posix_time_now;
+    api.enable_high_timer_resolution_ = posix_enable_high_timer_resolution;
+
+    posix_time_setup();
 
     ecs_os_set_api(&api);
 }
@@ -14840,6 +15653,8 @@ void ecs_set_os_api_impl(void) {
 
 #ifdef FLECS_PLECS
 
+#include <stdio.h>
+#include <ctype.h>
 
 #define TOK_NEWLINE '\n'
 #define TOK_WITH "with"
@@ -15841,6 +16656,8 @@ error:
 
 #ifdef FLECS_RULES
 
+#include <stdio.h>
+
 /** Implementation of the rule query engine.
  * 
  * A rule (terminology borrowed from prolog) is a list of constraints that 
@@ -16022,10 +16839,12 @@ typedef struct ecs_rule_pair_t {
         int32_t reg;
         ecs_entity_t ent;
     } obj;
-    int32_t reg_mask; /* bit 1 = predicate, bit 2 = object, bit 4 = wildcard */
+    int32_t reg_mask; /* bit 1 = predicate, bit 2 = object */
+
     bool transitive; /* Is predicate transitive */
     bool final;      /* Is predicate final */
-    bool inclusive;  /* Is predicate inclusive */
+    bool reflexive;  /* Is predicate reflexive */
+    bool acyclic;    /* Is predicate acyclic */
     bool obj_0;
 } ecs_rule_pair_t;
 
@@ -16074,6 +16893,8 @@ typedef enum ecs_rule_op_kind_t {
     EcsRuleSetJmp,      /* Set label for jump operation to one of two values */
     EcsRuleJump,        /* Jump to an operation label */
     EcsRuleNot,         /* Invert result of an operation */
+    EcsRuleInTable,     /* Test if entity (subject) is in table (r_in) */
+    EcsRuleEq,          /* Test if entity in (subject) and (r_in) are equal */
     EcsRuleYield        /* Yield result */
 } ecs_rule_op_kind_t;
 
@@ -16156,6 +16977,7 @@ typedef struct ecs_rule_var_t {
     ecs_rule_var_kind_t kind;
     char *name;       /* Variable name */
     int32_t id;       /* Unique variable id */
+    int32_t other;    /* Id to table variable (-1 if none exists) */
     int32_t occurs;   /* Number of occurrences (used for operation ordering) */
     int32_t depth;  /* Depth in dependency tree (used for operation ordering) */
     bool marked;      /* Used for cycle detection */
@@ -16252,6 +17074,11 @@ ecs_rule_var_t* create_variable(
 
     name = get_var_name(name);
 
+    if (name && !ecs_os_strcmp(name, "*")) {
+        /* Wildcards are treated as anonymous variables */
+        name = NULL;
+    }
+
     ecs_rule_var_t *var = &rule->variables[cur - 1];
     if (name) {
         var->name = ecs_os_strdup(name);
@@ -16341,27 +17168,52 @@ ecs_rule_var_t* ensure_variable(
 }
 
 static
-bool term_id_is_variable(
-    ecs_term_id_t *term_id)
-{
-    return term_id->var == EcsVarIsVariable;
-}
-
-static
 const char *term_id_var_name(
     ecs_term_id_t *term_id)
 {
     if (term_id->var == EcsVarIsVariable) {
-        if (term_id->entity == EcsThis) {
+        if (term_id->name) {
+            return term_id->name;
+        } else if (term_id->entity == EcsThis) {
             return ".";
+        } else if (term_id->entity == EcsWildcard) {
+            return "*";
+        } else if (term_id->entity == EcsAny) {
+            return "_";
         } else {
             ecs_check(term_id->name != NULL, ECS_INVALID_PARAMETER, NULL);
-            return term_id->name;
         }
     }
     
 error:
     return NULL;
+}
+
+static
+ecs_rule_var_t* ensure_term_id_variable(
+    ecs_rule_t *rule,
+    ecs_term_id_t *term_id)
+{
+    if (term_id->var == EcsVarIsVariable) {
+        if (term_id->entity == EcsAny) {
+            /* Any variables aren't translated to rule variables since their
+             * result isn't stored. */
+            return NULL;
+        }
+
+        const char *name = term_id_var_name(term_id);
+        ecs_rule_var_t *var = ensure_variable(rule, EcsRuleVarKindEntity, name);
+        ecs_os_strset(&term_id->name, var->name);
+        return var;
+    }
+    return NULL;
+}
+
+static
+bool term_id_is_variable(
+    ecs_term_id_t *term_id)
+{
+    return term_id->var == EcsVarIsVariable;
 }
 
 /* Get variable from a term identifier */
@@ -16451,7 +17303,7 @@ int32_t push_frame(
  * register will store a wildcard. */
 static
 ecs_rule_reg_t* get_register_frame(
-    ecs_rule_iter_t *it,
+    const ecs_rule_iter_t *it,
     int32_t frame)    
 {
     if (it->registers) {
@@ -16467,7 +17319,7 @@ ecs_rule_reg_t* get_register_frame(
  * register will store a wildcard. */
 static
 ecs_rule_reg_t* get_registers(
-    ecs_rule_iter_t *it,
+    const ecs_rule_iter_t *it,
     ecs_rule_op_t *op)    
 {
     return get_register_frame(it, op->frame);
@@ -16683,18 +17535,24 @@ ecs_rule_pair_t term_to_pair(
     /* If the predicate id is a variable, find the variable and encode its id
      * in the pair so the operation can find it later. */
     if (term->pred.var == EcsVarIsVariable) {
-        /* Always lookup the as an entity, as pairs never refer to tables */
-        const ecs_rule_var_t *var = find_variable(
-            rule, EcsRuleVarKindEntity, term_id_var_name(&term->pred));
+        if (term->pred.entity != EcsAny) {
+            /* Always lookup var as an entity, as pairs never refer to tables */
+            const ecs_rule_var_t *var = find_variable(
+                rule, EcsRuleVarKindEntity, term_id_var_name(&term->pred));
 
-        /* Variables should have been declared */
-        ecs_assert(var != NULL, ECS_INTERNAL_ERROR, NULL);
-        ecs_assert(var->kind == EcsRuleVarKindEntity, ECS_INTERNAL_ERROR, NULL);
-        result.pred.reg = var->id;
+            /* Variables should have been declared */
+            ecs_assert(var != NULL, ECS_INTERNAL_ERROR, NULL);
+            ecs_assert(var->kind == EcsRuleVarKindEntity, 
+                ECS_INTERNAL_ERROR, NULL);
+            result.pred.reg = var->id;
 
-        /* Set flag so the operation can see that the predicate is a variable */
-        result.reg_mask |= RULE_PAIR_PREDICATE;
-        result.final = true;
+            /* Set flag so the operation can see the predicate is a variable */
+            result.reg_mask |= RULE_PAIR_PREDICATE;
+            result.final = true;
+        } else {
+            result.pred.ent = EcsWildcard;
+            result.final = true;
+        }
     } else {
         /* If the predicate is not a variable, simply store its id. */
         ecs_entity_t pred_id = term->pred.entity;
@@ -16713,8 +17571,12 @@ ecs_rule_pair_t term_to_pair(
             result.final = true;
         }
 
-        if (ecs_has_id(rule->world, pred_id, EcsTransitiveSelf)) {
-            result.inclusive = true;
+        if (ecs_has_id(rule->world, pred_id, EcsReflexive)) {
+            result.reflexive = true;
+        }
+
+        if (ecs_has_id(rule->world, pred_id, EcsAcyclic)) {
+            result.acyclic = true;
         }
     }
 
@@ -16730,15 +17592,20 @@ ecs_rule_pair_t term_to_pair(
 
     /* Same as above, if the object is a variable, store it and flag it */
     if (term->obj.var == EcsVarIsVariable) {
-        const ecs_rule_var_t *var = find_variable(
-            rule, EcsRuleVarKindEntity, term_id_var_name(&term->obj));
+        if (term->obj.entity != EcsAny) {
+            const ecs_rule_var_t *var = find_variable(
+                rule, EcsRuleVarKindEntity, term_id_var_name(&term->obj));
 
-        /* Variables should have been declared */
-        ecs_assert(var != NULL, ECS_INTERNAL_ERROR, NULL);
-        ecs_assert(var->kind == EcsRuleVarKindEntity, ECS_INTERNAL_ERROR, NULL);
+            /* Variables should have been declared */
+            ecs_assert(var != NULL, ECS_INTERNAL_ERROR, NULL);
+            ecs_assert(var->kind == EcsRuleVarKindEntity, ECS_INTERNAL_ERROR, 
+                NULL);
 
-        result.obj.reg = var->id;
-        result.reg_mask |= RULE_PAIR_OBJECT;
+            result.obj.reg = var->id;
+            result.reg_mask |= RULE_PAIR_OBJECT;
+        } else {
+            result.obj.ent = EcsWildcard;
+        }
     } else {
         /* If the object is not a variable, simply store its id */
         result.obj.ent = term->obj.entity;
@@ -17153,7 +18020,7 @@ void ensure_all_variables(
 
         /* If predicate is a variable, make sure it has been registered */
         if (term->pred.var == EcsVarIsVariable) {
-            ensure_variable(rule, EcsRuleVarKindEntity, term_id_var_name(&term->pred));
+            ensure_term_id_variable(rule, &term->pred);
         }
 
         /* If subject is a variable and it is not This, make sure it is 
@@ -17161,13 +18028,13 @@ void ensure_all_variables(
          * correctly return all permutations */
         if (term->subj.var == EcsVarIsVariable) {
             if (term->subj.entity != EcsThis) {
-                ensure_variable(rule, EcsRuleVarKindEntity, term_id_var_name(&term->subj));
+                ensure_term_id_variable(rule, &term->subj);
             }
         }
 
         /* If object is a variable, make sure it has been registered */
         if (obj_is_set(term) && (term->obj.var == EcsVarIsVariable)) {
-            ensure_variable(rule, EcsRuleVarKindEntity, term_id_var_name(&term->obj));
+            ensure_term_id_variable(rule, &term->obj);
         }
     }    
 }
@@ -17208,6 +18075,10 @@ int scan_variables(
                     rule_error(rule, "too many variables in rule");
                     goto error;
                 }
+
+                /* Make sure that variable name in term array matches with the
+                 * rule name. */
+                ecs_os_strset(&term->subj.name, subj->name);
             }
 
             if (++ subj->occurs > max_occur) {
@@ -17544,14 +18415,14 @@ void insert_yield(
 
 /* Return superset/subset including the root */
 static
-void insert_inclusive_set(
+void insert_reflexive_set(
     ecs_rule_t *rule,
     ecs_rule_op_kind_t op_kind,
     ecs_rule_var_t *out,
     const ecs_rule_pair_t pair,
     int32_t c,
     bool *written,
-    bool inclusive)
+    bool reflexive)
 {
     ecs_assert(out != NULL, ECS_INTERNAL_ERROR, NULL);
 
@@ -17567,9 +18438,9 @@ void insert_inclusive_set(
     int32_t prev_op = setjmp_lbl - 1;
 
     /* Insert 4 operations at once, so we don't have to worry about how
-     * the instruction array reallocs. If operation is not inclusive, we only
+     * the instruction array reallocs. If operation is not reflexive, we only
      * need to insert the set operation. */
-    if (inclusive) {
+    if (reflexive) {
         insert_operation(rule, -1, written);
         insert_operation(rule, -1, written);
         insert_operation(rule, -1, written);
@@ -17581,7 +18452,7 @@ void insert_inclusive_set(
     ecs_rule_op_t *set = op - 1;
     ecs_rule_op_t *jump = op;
 
-    if (!inclusive) {
+    if (!reflexive) {
         set_lbl = setjmp_lbl;
         set = op;
         setjmp = NULL;
@@ -17593,7 +18464,7 @@ void insert_inclusive_set(
 
     /* The SetJmp operation stores a conditional jump label that either
      * points to the Store or *Set operation */
-    if (inclusive) {
+    if (reflexive) {
         setjmp->kind = EcsRuleSetJmp;
         setjmp->on_pass = store_lbl;
         setjmp->on_fail = set_lbl;
@@ -17605,7 +18476,7 @@ void insert_inclusive_set(
     /* The Store operation yields the root of the subtree. After yielding,
      * this operation will fail and return to SetJmp, which will cause it
      * to switch to the *Set operation. */
-    if (inclusive) {
+    if (reflexive) {
         store->kind = EcsRuleStore;
         store->on_pass = next_op;
         store->on_fail = setjmp_lbl;
@@ -17656,7 +18527,7 @@ void insert_inclusive_set(
         set->filter.reg_mask |= RULE_PAIR_OBJECT;
     }
 
-    if (inclusive) {
+    if (reflexive) {
         /* The jump operation jumps to either the store or subset operation,
         * depending on whether the store operation already yielded. The 
         * operation is inserted last, so that the on_fail label of the next 
@@ -17675,12 +18546,12 @@ void insert_inclusive_set(
 }
 
 static
-ecs_rule_var_t* store_inclusive_set(
+ecs_rule_var_t* store_reflexive_set(
     ecs_rule_t *rule,
     ecs_rule_op_kind_t op_kind,
     ecs_rule_pair_t *pair,
     bool *written,
-    bool inclusive)
+    bool reflexive)
 {
     /* The subset operation returns tables */
     ecs_rule_var_kind_t var_kind = EcsRuleVarKindTable;
@@ -17708,7 +18579,7 @@ ecs_rule_var_t* store_inclusive_set(
     }
 
     /* Generate the operations */
-    insert_inclusive_set(rule, op_kind, av, *pair, -1, written, inclusive);
+    insert_reflexive_set(rule, op_kind, av, *pair, -1, written, reflexive);
 
     /* Make sure to return entity variable, and that it is populated */
     return ensure_entity_written(rule, av, written);
@@ -17733,12 +18604,12 @@ bool is_pair_known(
     bool *written)
 {
     ecs_rule_var_t *pred_var = pair_pred(rule, pair);
-    if (!is_known(pred_var, written)) {
+    if (!is_known(pred_var, written) || pair->pred.ent == EcsWildcard) {
         return false;
     }
 
     ecs_rule_var_t *obj_var = pair_obj(rule, pair);
-    if (!is_known(obj_var, written)) {
+    if (!is_known(obj_var, written) || pair->obj.ent == EcsWildcard) {
         return false;
     }
 
@@ -17800,7 +18671,6 @@ void insert_select_or_with(
 {
     ecs_rule_op_t *op;
     bool eval_subject_supersets = false;
-    bool wildcard_subj = term->subj.entity == EcsWildcard;
 
     /* Find any entity and/or table variables for subject */
     ecs_rule_var_t *tvar = NULL, *evar = to_entity(rule, subj), *var = evar;
@@ -17819,14 +18689,14 @@ void insert_select_or_with(
         filter = term_to_pair(rule, term);
     }
 
-    if (!var && !wildcard_subj) {
+    if (!var && filter.pred.ent != EcsWildcard) {
         /* Only insert implicit IsA if filter isn't already an IsA */
         if (!filter.transitive || filter.pred.ent != EcsIsA) {
             ecs_rule_pair_t isa_pair = {
                 .pred.ent = EcsIsA,
                 .obj.ent = term->subj.entity
             };
-            evar = subj = store_inclusive_set(
+            evar = subj = store_reflexive_set(
                 rule, EcsRuleSuperSet, &isa_pair, written, true);
             tvar = NULL;
             eval_subject_supersets = true;
@@ -17863,18 +18733,16 @@ void insert_select_or_with(
         set_input_to_subj(rule, op, term, subj);
 
     /* If subject is neither table nor entitiy, with operates on literal */        
-    } else if (!tvar && !evar && !wildcard_subj) {
+    } else if (!tvar && !evar) {
         op->kind = EcsRuleWith;
         set_input_to_subj(rule, op, term, subj);
 
     /* If subject is table or entity but not known, use select */
     } else {
-        ecs_assert(wildcard_subj || subj != NULL, ECS_INTERNAL_ERROR, NULL);
+        ecs_assert(subj != NULL, ECS_INTERNAL_ERROR, NULL);
         op->kind = EcsRuleSelect;
-        if (!wildcard_subj) {
-            set_output_to_subj(rule, op, term, subj);
-            written[subj->id] = true;
-        }
+        set_output_to_subj(rule, op, term, subj);
+        written[subj->id] = true;
     }
 
     /* If supersets of subject are being evaluated, and we're looking for a
@@ -17913,7 +18781,7 @@ void prepare_predicate(
             .obj.ent = pair->pred.ent
         };
 
-        ecs_rule_var_t *pred = store_inclusive_set(
+        ecs_rule_var_t *pred = store_reflexive_set(
             rule, EcsRuleSubSet, &isa_pair, written, true);
 
         pair->pred.reg = pred->id;
@@ -17940,24 +18808,34 @@ void insert_term_2(
         obj_id = obj->id;
     }
 
+    bool subj_known = is_known(subj, written);
+    bool same_obj_subj = false;
+    if (subj && obj) {
+        same_obj_subj = !ecs_os_strcmp(subj->name, obj->name);
+    }
+
     if (!filter->transitive) {
         insert_select_or_with(rule, c, term, subj, filter, written);
 
     } else if (filter->transitive) {
-        if (is_known(subj, written)) {
+        if (subj_known) {
             if (is_known(obj, written)) {
-                ecs_rule_var_t *obj_subsets = store_inclusive_set(
-                    rule, EcsRuleSubSet, filter, written, true);
+                if (filter->obj.ent != EcsWildcard) {
+                    ecs_rule_var_t *obj_subsets = store_reflexive_set(
+                        rule, EcsRuleSubSet, filter, written, true);
 
-                if (subj) {
-                    subj = &rule->variables[subj_id];
+                    if (subj) {
+                        subj = &rule->variables[subj_id];
+                    }
+
+                    ecs_rule_pair_t pair = *filter;
+                    pair.obj.reg = obj_subsets->id;
+                    pair.reg_mask |= RULE_PAIR_OBJECT;
+
+                    insert_select_or_with(rule, c, term, subj, &pair, written);
+                } else {
+                    insert_select_or_with(rule, c, term, subj, filter, written);
                 }
-
-                ecs_rule_pair_t pair = *filter;
-                pair.obj.reg = obj_subsets->id;
-                pair.reg_mask |= RULE_PAIR_OBJECT;
-
-                insert_select_or_with(rule, c, term, subj, &pair, written);
             } else {
                 ecs_assert(obj != NULL, ECS_INTERNAL_ERROR, NULL);
 
@@ -17975,8 +18853,8 @@ void insert_term_2(
                         set_pair.obj.ent = term->subj.entity;
                     }
 
-                    insert_inclusive_set(rule, EcsRuleSuperSet, obj, set_pair, 
-                        c, written, filter->inclusive);
+                    insert_reflexive_set(rule, EcsRuleSuperSet, obj, set_pair, 
+                        c, written, filter->reflexive);
 
                 /* If subject is variable, first find matching pair for the 
                  * evaluated entity(s) and return supersets */
@@ -17999,9 +18877,9 @@ void insert_term_2(
                     push_frame(rule);
 
                     /* Find supersets for returned initial object. Make sure
-                     * this is always inclusive since it needs to return the
+                     * this is always reflexive since it needs to return the
                      * object from the pair that the entity has itself. */
-                    insert_inclusive_set(rule, EcsRuleSuperSet, obj, set_pair, 
+                    insert_reflexive_set(rule, EcsRuleSuperSet, obj, set_pair, 
                         c, written, true);
                 }
             }
@@ -18021,51 +18899,93 @@ void insert_term_2(
                     set_pair.obj.ent = term->obj.entity;
                 }
 
-                insert_inclusive_set(rule, EcsRuleSubSet, subj, set_pair, c, 
-                    written, filter->inclusive);
+                insert_reflexive_set(rule, EcsRuleSubSet, subj, set_pair, c, 
+                    written, filter->reflexive);
             } else if (subj == obj) {
                 insert_select_or_with(rule, c, term, subj, filter, written);
             } else {
                 ecs_assert(obj != NULL, ECS_INTERNAL_ERROR, NULL);
 
-                ecs_rule_var_t *av = create_anonymous_variable(
-                    rule, EcsRuleVarKindEntity);
+                ecs_rule_var_t *av = NULL;
+                if (!filter->reflexive) {
+                    av = create_anonymous_variable(rule, EcsRuleVarKindEntity);
+                }
 
                 subj = &rule->variables[subj_id];
                 obj = &rule->variables[obj_id];
                 obj = to_entity(rule, obj);
 
-                /* TODO: this instruction currently does not return inclusive
-                 * results. For example, it will return IsA(XWing, Machine) and
-                 * IsA(XWing, Thing), but not IsA(XWing, XWing). To enable
-                 * inclusive behavior, we need to be able to find all subjects
-                 * that have IsA relationships, without expanding to all
-                 * IsA relationships. For this a new mode needs to be supported
-                 * where an operation never does a redo.
-                 *
-                 * This select can then be used to find all subjects, and those
-                 * same subjects can then be used to find all (inclusive) 
-                 * supersets for those subjects. */
-
                 /* Insert instruction to find all subjects and objects */
                 ecs_rule_op_t *op = insert_operation(rule, -1, written);
                 op->kind = EcsRuleSelect;
                 set_output_to_subj(rule, op, term, subj);
-
-                /* Set object to anonymous variable */
                 op->filter.pred = filter->pred;
-                op->filter.obj.reg = av->id;
-                op->filter.reg_mask = filter->reg_mask | RULE_PAIR_OBJECT;
+
+                if (filter->reflexive) {
+                    op->filter.obj.ent = EcsWildcard;
+                    op->filter.reg_mask = filter->reg_mask & RULE_PAIR_PREDICATE;
+                } else {
+                    op->filter.obj.reg = av->id;
+                    op->filter.reg_mask = filter->reg_mask | RULE_PAIR_OBJECT;
+                    written[av->id] = true;
+                }
 
                 written[subj->id] = true;
-                written[av->id] = true;
 
-                /* Create new frame for operations that create inclusive set */
+                /* Create new frame for operations that create reflexive set */
                 push_frame(rule);
 
                 /* Insert superset instruction to find all supersets */
-                insert_inclusive_set(rule, EcsRuleSuperSet, obj, op->filter, c, 
-                    written, true);
+                if (filter->reflexive) {
+                    subj = ensure_most_specific_var(rule, subj, written);
+                    ecs_assert(subj->kind == EcsRuleVarKindEntity, 
+                        ECS_INTERNAL_ERROR, NULL);
+                    ecs_assert(written[subj->id] == true,
+                        ECS_INTERNAL_ERROR, NULL);
+
+                    ecs_rule_pair_t super_filter = {0};
+                    super_filter.pred = filter->pred;
+                    super_filter.obj.reg = subj->id;
+                    super_filter.reg_mask = filter->reg_mask | RULE_PAIR_OBJECT;
+
+                    insert_reflexive_set(rule, EcsRuleSuperSet, obj, 
+                        super_filter, c, written, true);
+                } else {
+                    insert_reflexive_set(rule, EcsRuleSuperSet, obj, 
+                        op->filter, c, written, true);
+                }
+            }
+        }
+    }
+
+    if (same_obj_subj) {
+        /* Can't have relation with same variables that is acyclic and not
+         * reflexive, this should've been caught earlier. */
+        ecs_assert(!filter->acyclic || filter->reflexive, 
+            ECS_INTERNAL_ERROR, NULL);
+
+        /* If relation is reflexive and entity has an instance of R, no checks
+         * are needed because R(X, X) is always true. */
+        if (!filter->reflexive) {
+            push_frame(rule);
+
+            /* Insert check if the (R, X) pair that was found matches with one
+             * of the entities in the table with the pair. */
+            ecs_rule_op_t *op = insert_operation(rule, -1, written);
+            obj = get_most_specific_var(rule, obj, written);
+            ecs_assert(obj->kind == EcsRuleVarKindEntity, 
+                ECS_INTERNAL_ERROR, NULL);
+            ecs_assert(written[subj->id] == true, ECS_INTERNAL_ERROR, NULL);
+            ecs_assert(written[obj->id] == true, ECS_INTERNAL_ERROR, NULL);
+            
+            set_input_to_subj(rule, op, term, subj);
+            op->filter.obj.reg = obj->id;
+            op->filter.reg_mask = RULE_PAIR_OBJECT;
+
+            if (subj->kind == EcsRuleVarKindTable) {
+                op->kind = EcsRuleInTable;
+            } else {
+                op->kind = EcsRuleEq;
             }
         }
     }
@@ -18194,10 +19114,6 @@ void compile_program(
             continue;
         }
 
-        if (term->subj.entity == EcsWildcard) {
-            continue;
-        }
-
         insert_term(rule, term, c, written);
     }
 
@@ -18227,17 +19143,6 @@ void compile_program(
 
             var = &rule->variables[v];
         }
-    }
-
-    /* Insert terms with wildcard subject */
-    for (c = 0; c < term_count; c ++) {
-        ecs_term_t *term = &terms[c];
-
-        if (term->subj.entity != EcsWildcard) {
-            continue;
-        }
-
-        insert_term(rule, term, c, written);
     }
 
     /* Insert terms with Not operators */
@@ -18273,6 +19178,7 @@ void compile_program(
              * written. */
             ecs_rule_var_t *var = find_variable(
                 rule, EcsRuleVarKindEntity, rule->variables[v].name);
+            ecs_assert(var != NULL, ECS_INTERNAL_ERROR, NULL);
             ecs_assert(written[var->id], ECS_INTERNAL_ERROR, var->name);
             (void)var;
         }
@@ -18332,6 +19238,35 @@ void create_variable_name_array(
                 rule->variable_names[var->id] = NULL;
             } else {
                 rule->variable_names[var->id] = var->name;
+            }
+        }
+    }
+}
+
+static
+void create_variable_cross_references(
+    ecs_rule_t *rule)
+{
+    if (rule->variable_count) {
+        int i;
+        for (i = 0; i < rule->variable_count; i ++) {
+            ecs_rule_var_t *var = &rule->variables[i];
+            if (var->kind == EcsRuleVarKindEntity) {
+                ecs_rule_var_t *tvar = find_variable(
+                    rule, EcsRuleVarKindTable, var->name);
+                if (tvar) {
+                    var->other = tvar->id;
+                } else {
+                    var->other = -1;
+                }
+            } else {
+                ecs_rule_var_t *evar = find_variable(
+                    rule, EcsRuleVarKindEntity, var->name);
+                if (evar) {
+                    var->other = evar->id;
+                } else {
+                    var->other = -1;
+                }
             }
         }
     }
@@ -18402,6 +19337,10 @@ ecs_rule_t* ecs_rule_init(
      * iterators without requiring access to the ecs_rule_t */
     create_variable_name_array(result);
 
+    /* Create cross-references between variables so it's easy to go from entity
+     * to table variable and vice versa */
+    create_variable_cross_references(result);
+
     /* Create lookup array for subject variables */
     result->subject_variables = ecs_os_malloc_n(int32_t, term_count);
 
@@ -18446,7 +19385,7 @@ void ecs_rule_fini(
     ecs_os_free(rule);
 }
 
-const ecs_filter_t* ecs_rule_filter(
+const ecs_filter_t* ecs_rule_get_filter(
     const ecs_rule_t *rule)
 {
     return &rule->filter; 
@@ -18541,6 +19480,14 @@ char* ecs_rule_str(
             break;
         case EcsRuleNot:
             ecs_strbuf_append(&buf, "not      ");
+            break;
+        case EcsRuleInTable:
+            ecs_strbuf_append(&buf, "intable  ");
+            has_filter = true;
+            break;
+        case EcsRuleEq:
+            ecs_strbuf_append(&buf, "eq       ");
+            has_filter = true;
             break;            
         case EcsRuleYield:
             ecs_strbuf_append(&buf, "yield    ");
@@ -18568,7 +19515,8 @@ char* ecs_rule_str(
                 ecs_strbuf_append(&buf, "I:%s%s ", 
                     r_in->kind == EcsRuleVarKindTable ? "t" : "",
                     r_in->name);
-            } else if (op->subject) {
+            }
+            if (op->subject) {
                 char *subj_path = ecs_get_fullpath(world, op->subject);
                 ecs_strbuf_append(&buf, "I:%s ", subj_path);
                 ecs_os_free(subj_path);
@@ -18576,6 +19524,9 @@ char* ecs_rule_str(
         }
 
         if (has_filter) {
+            if (!pred_name) {
+                pred_name = "-";
+            }
             if (!obj && !pair.obj_0) {
                 ecs_os_sprintf(filter_expr, "(%s)", pred_name);
             } else {
@@ -18597,7 +19548,7 @@ error:
 
 /* Public function that returns number of variables. This enables an application
  * to iterate the variables and obtain their values. */
-int32_t ecs_rule_variable_count(
+int32_t ecs_rule_var_count(
     const ecs_rule_t *rule)
 {
     ecs_assert(rule != NULL, ECS_INTERNAL_ERROR, NULL);
@@ -18605,7 +19556,7 @@ int32_t ecs_rule_variable_count(
 }
 
 /* Public function to find a variable by name */
-int32_t ecs_rule_find_variable(
+int32_t ecs_rule_find_var(
     const ecs_rule_t *rule,
     const char *name)
 {
@@ -18618,7 +19569,7 @@ int32_t ecs_rule_find_variable(
 }
 
 /* Public function to get the name of a variable. */
-const char* ecs_rule_variable_name(
+const char* ecs_rule_var_name(
     const ecs_rule_t *rule,
     int32_t var_id)
 {
@@ -18626,7 +19577,7 @@ const char* ecs_rule_variable_name(
 }
 
 /* Public function to get the type of a variable. */
-bool ecs_rule_variable_is_entity(
+bool ecs_rule_var_is_entity(
     const ecs_rule_t *rule,
     int32_t var_id)
 {
@@ -18634,11 +19585,11 @@ bool ecs_rule_variable_is_entity(
 }
 
 /* Public function to get the value of a variable. */
-ecs_entity_t ecs_rule_variable(
-    ecs_iter_t *iter,
+ecs_entity_t ecs_rule_get_var(
+    const ecs_iter_t *iter,
     int32_t var_id)
 {
-    ecs_rule_iter_t *it = &iter->priv.iter.rule;
+    const ecs_rule_iter_t *it = &iter->priv.iter.rule;
     const ecs_rule_t *rule = it->rule;
 
     /* We can only return entity variables */
@@ -18648,6 +19599,55 @@ ecs_entity_t ecs_rule_variable(
     } else {
         return 0;
     }
+}
+
+/* Public function to set the value of a variable before iterating. */
+void ecs_rule_set_var(
+    ecs_iter_t *it,
+    int32_t var_id,
+    ecs_entity_t value)
+{
+    ecs_check(it != NULL, ECS_INVALID_PARAMETER, NULL);
+    ecs_check(var_id != -1, ECS_INVALID_PARAMETER, NULL);
+    ecs_check(value != 0, ECS_INVALID_PARAMETER, NULL);
+    /* Can't set variable while iterating */
+    ecs_check(it->is_valid == false, ECS_INVALID_OPERATION, NULL);
+    ecs_check(it->next == ecs_rule_next, ECS_INVALID_OPERATION, NULL);
+
+    ecs_rule_iter_t *iter = &it->priv.iter.rule;
+    ecs_check(iter->registers != NULL, ECS_INVALID_PARAMETER, NULL);
+
+    const ecs_rule_t *r = iter->rule;
+    ecs_check(var_id < r->variable_count, ECS_INVALID_PARAMETER, NULL);
+
+    entity_reg_set(r, iter->registers, var_id, value);
+
+    /* Also set table variable if it exists */
+    ecs_rule_var_t *var = &r->variables[var_id];
+    if (var->other != -1) {
+        ecs_rule_var_t *tvar = &r->variables[var->other];
+        ecs_assert(tvar->kind == EcsRuleVarKindTable, 
+            ECS_INTERNAL_ERROR, NULL);
+        (void)tvar;
+        reg_set_entity(r, iter->registers, var->other, value);
+    }
+error:
+    return;
+}
+
+static
+void ecs_rule_iter_free(
+    ecs_iter_t *iter)
+{
+    ecs_rule_iter_t *it = &iter->priv.iter.rule;
+    ecs_os_free(it->registers);
+    ecs_os_free(it->columns);
+    ecs_os_free(it->op_ctx);
+    ecs_os_free(it->variables);
+    iter->columns = NULL;
+    it->registers = NULL;
+    it->columns = NULL;
+    it->op_ctx = NULL;
 }
 
 /* Create rule iterator */
@@ -18663,6 +19663,8 @@ ecs_iter_t ecs_rule_iter(
 
     result.world = (ecs_world_t*)world;
     result.real_world = (ecs_world_t*)ecs_get_world(rule->world);
+
+    flecs_process_pending_tables(result.real_world);
 
     ecs_rule_iter_t *it = &result.priv.iter.rule;
     it->rule = rule;
@@ -18702,25 +19704,11 @@ ecs_iter_t ecs_rule_iter(
     result.term_count = rule->filter.term_count;
     result.terms = rule->filter.terms;
     result.next = ecs_rule_next;
+    result.fini = ecs_rule_iter_free;
     result.is_filter = rule->filter.filter;
     result.columns = it->columns; /* prevent alloc */
 
     return result;
-}
-
-void ecs_rule_iter_free(
-    ecs_iter_t *iter)
-{
-    ecs_rule_iter_t *it = &iter->priv.iter.rule;
-    ecs_os_free(it->registers);
-    ecs_os_free(it->columns);
-    ecs_os_free(it->op_ctx);
-    ecs_os_free(it->variables);
-    iter->columns = NULL;
-    it->registers = NULL;
-    it->columns = NULL;
-    it->op_ctx = NULL;
-    ecs_iter_fini(iter);
 }
 
 /* Edge case: if the filter has the same variable for both predicate and
@@ -18807,13 +19795,15 @@ ecs_table_record_t find_next_table(
     ecs_rule_with_ctx_t *op_ctx)
 {
     ecs_id_record_t *idr = op_ctx->idr;
-    const ecs_table_record_t *tables = flecs_id_record_tables(idr);
-    int32_t i = op_ctx->table_index, count = flecs_id_record_count(idr);
+    ecs_table_iter_t it;
+    flecs_idr_iter(idr, &it);
+    it.cur = it.begin + op_ctx->table_index;
+
     ecs_table_t *table = NULL;
     int32_t column = -1;
 
-    for (; i < count && (column == -1); i ++) {
-        const ecs_table_record_t *tr = &tables[i];
+    for (; it.cur < it.end && (column == -1); ++ it.cur) {
+        const ecs_table_record_t *tr = it.cur;
         table = tr->table;
 
         /* Should only iterate non-empty tables */
@@ -18829,7 +19819,7 @@ ecs_table_record_t find_next_table(
         table = NULL;
     }
 
-    op_ctx->table_index = i;
+    op_ctx->table_index = (int32_t)(it.cur - it.begin);
 
     return (ecs_table_record_t){.table = table, .column = column};
 }
@@ -18840,11 +19830,10 @@ ecs_id_record_t* find_tables(
     ecs_id_t id)
 {
     ecs_id_record_t *idr = flecs_get_id_record(world, id);
-    if (!flecs_id_record_count(idr)) {
+    if (!idr || !ecs_table_cache_count(&idr->cache)) {
         /* Skip ids that don't have (non-empty) tables */
         return NULL;
     }
-
     return idr;
 }
 
@@ -18955,10 +19944,21 @@ bool eval_superset(
     ecs_rule_pair_t pair = op->filter;
 
     ecs_rule_filter_t filter = pair_to_filter(iter, op, pair);
+    ecs_entity_t rel = ECS_PAIR_RELATION(filter.mask);
     ecs_rule_filter_t super_filter = { 
-        .mask = ecs_pair(ECS_PAIR_RELATION(filter.mask), EcsWildcard) 
+        .mask = ecs_pair(rel, EcsWildcard) 
     };
     ecs_table_t *table = NULL;
+
+    /* If the input register is not NULL, this is a variable that's been set by
+     * the application. */
+    ecs_entity_t result = iter->registers[r].entity;
+    bool output_is_input = result != EcsWildcard;
+
+    if (output_is_input && !redo) {
+        ecs_assert(regs[r].entity == iter->registers[r].entity, 
+            ECS_INTERNAL_ERROR, NULL);
+    }
 
     if (!redo) {
         op_ctx->stack = op_ctx->storage;
@@ -18972,8 +19972,26 @@ bool eval_superset(
         ecs_assert(obj != EcsWildcard, ECS_INTERNAL_ERROR, NULL);
 
         /* Find first matching column in table */
-        table = table_from_entity(world, obj);
-        int32_t column = find_next_column(world, table, -1, &super_filter);
+        if (!table) {
+            table = table_from_entity(world, obj);
+        }
+
+        int32_t column;
+
+        /* If output variable is already set, check if it matches */
+        if (output_is_input) {
+            ecs_id_t id = ecs_pair(rel, result);
+            ecs_entity_t subj = 0;
+            column = ecs_search_relation(world, table, 0, id, rel, 
+                0, 0, &subj, 0, NULL);
+            if (column != -1) {
+                if (subj != 0) {
+                    table = ecs_get_table(world, subj);
+                }
+            }
+        } else {
+            column = find_next_column(world, table, -1, &super_filter);
+        }
 
         /* If no matching column was found, there are no supersets */
         if (column == -1) {
@@ -18990,6 +20008,8 @@ bool eval_superset(
         frame->column = column;
 
         return true;
+    } else if (output_is_input) {
+        return false;
     }
 
     sp = op_ctx->sp;
@@ -19229,25 +20249,49 @@ bool eval_select(
         return false;
     }
 
-    /* If this is not a redo, start at the beginning */
-    if (!redo) {
-        op_ctx->table_index = 0;
+    /* If the input register is not NULL, this is a variable that's been set by
+     * the application. */
+    table = iter->registers[r].table;
+    bool output_is_input = table != NULL;
 
-        /* Return the first table_record in the table set. */
-        table_record = find_next_table(&filter, op_ctx);
-    
-        /* If no table record was found, there are no results. */
-        if (!table_record.table) {
+    if (output_is_input && !redo) {
+        ecs_assert(regs[r].table == iter->registers[r].table, 
+            ECS_INTERNAL_ERROR, NULL);
+
+        table = iter->registers[r].table;
+
+        /* Check if table can be found in the id record. If not, the provided 
+        * table does not match with the query. */
+        ecs_table_record_t *tr = ecs_table_cache_get(&idr->cache, 
+            ecs_table_record_t, table);
+        if (!tr) {
             return false;
         }
 
-        table = table_record.table;
+        column = columns[op->term] = tr->column;
+    }
 
-        /* Set current column to first occurrence of queried for entity */
-        column = columns[op->term] = table_record.column;
+    /* If this is not a redo, start at the beginning */
+    if (!redo) {
+        if (!table) {
+            op_ctx->table_index = 0;
 
-        /* Store table in register */
-        table_reg_set(rule, regs, r, table);
+            /* Return the first table_record in the table set. */
+            table_record = find_next_table(&filter, op_ctx);
+        
+            /* If no table record was found, there are no results. */
+            if (!table_record.table) {
+                return false;
+            }
+
+            table = table_record.table;
+
+            /* Set current column to first occurrence of queried for entity */
+            column = columns[op->term] = table_record.column;
+
+            /* Store table in register */
+            table_reg_set(rule, regs, r, table);
+        }
     
     /* If this is a redo, progress to the next match */
     } else {
@@ -19257,6 +20301,7 @@ bool eval_select(
             table = table_reg_get(rule, regs, r);
             ecs_assert(table != NULL, ECS_INTERNAL_ERROR, NULL);
 
+
             column = columns[op->term];
             column = find_next_column(world, table, column, &filter);
             columns[op->term] = column;
@@ -19264,6 +20309,10 @@ bool eval_select(
 
         /* If no next match was found for this table, move to next table */
         if (column == -1) {
+            if (output_is_input) {
+                return false;
+            }
+
             table_record = find_next_table(&filter, op_ctx);
             if (!table_record.table) {
                 return false;
@@ -19338,17 +20387,17 @@ bool eval_with(
      * the first time the operation is evaluated, variables may have changed
      * since last time, which could change the table set to lookup. */
     } else {
-        /* Transitive queries are inclusive, which means that if we have a
+        /* Predicates can be reflexive, which means that if we have a
          * transitive predicate which is provided with the same subject and
          * object, it should return true. By default with will not return true
          * as the subject likely does not have itself as a relationship, which
          * is why this is a special case. 
          *
-         * TODO: might want to move this code to a separate with_inclusive
+         * TODO: might want to move this code to a separate with_reflexive
          * instruction to limit branches for non-transitive queries (and to keep
          * code more readable).
          */
-        if (pair.transitive && pair.inclusive) {
+        if (pair.transitive && pair.reflexive) {
             ecs_entity_t subj = 0, obj = 0;
             
             if (r == UINT8_MAX) {
@@ -19499,7 +20548,7 @@ bool eval_each(
 
         /* Skip builtin entities that could confuse operations */
         e = entities[row];
-        while (e == EcsWildcard || e == EcsThis) {
+        while (e == EcsWildcard || e == EcsThis || e == EcsAny) {
             row ++;
             if (row == count) {
                 return false;
@@ -19543,9 +20592,22 @@ bool eval_store(
     ecs_rule_reg_t *regs = get_registers(iter, op);
     int32_t r_in = op->r_in;
     int32_t r_out = op->r_out;
+    ecs_entity_t out, in = reg_get_entity(rule, op, regs, r_in);
 
-    ecs_entity_t e = reg_get_entity(rule, op, regs, r_in);
-    reg_set_entity(rule, regs, r_out, e);
+    out = iter->registers[r_out].entity;
+    bool output_is_input = out && out != EcsWildcard;
+
+    if (output_is_input && !redo) {
+        ecs_assert(regs[r_out].entity == iter->registers[r_out].entity, 
+            ECS_INTERNAL_ERROR, NULL);
+
+        if (out != in) {
+            /* If output variable is set it must match the input */
+            return false;
+        }
+    }
+
+    reg_set_entity(rule, regs, r_out, in);
 
     if (op->term >= 0) {
         ecs_rule_filter_t filter = pair_to_filter(iter, op, op->filter);
@@ -19613,6 +20675,37 @@ bool eval_not(
     return !redo;
 }
 
+/* Check if entity is stored in table */
+static
+bool eval_intable(
+    ecs_iter_t *it,
+    ecs_rule_op_t *op,
+    int32_t op_index,
+    bool redo)
+{
+    (void)op_index;
+    
+    if (redo) {
+        return false;
+    }
+
+    ecs_rule_iter_t *iter = &it->priv.iter.rule;
+    const ecs_rule_t  *rule = iter->rule;
+    ecs_world_t *world = rule->world;
+    ecs_rule_reg_t *regs = get_registers(iter, op);
+    ecs_table_t *table = table_reg_get(rule, regs, op->r_in);
+
+    ecs_rule_pair_t pair = op->filter;
+    ecs_rule_filter_t filter = pair_to_filter(iter, op, pair);
+    ecs_entity_t obj = ECS_PAIR_OBJECT(filter.mask);
+    ecs_assert(obj != 0 && obj != EcsWildcard, ECS_INTERNAL_ERROR, NULL);
+    obj = ecs_get_alive(world, obj);
+    ecs_assert(obj != 0, ECS_INTERNAL_ERROR, NULL);
+
+    ecs_table_t *obj_table = ecs_get_table(world, obj);
+    return obj_table == table;
+}
+
 /* Yield operation. This is the simplest operation, as all it does is return
  * false. This will move the solver back to the previous instruction which
  * forces redo's on previous operations, for as long as there are matching
@@ -19663,6 +20756,8 @@ bool eval_op(
         return eval_jump(it, op, op_index, redo);
     case EcsRuleNot:
         return eval_not(it, op, op_index, redo);
+    case EcsRuleInTable:
+        return eval_intable(it, op, op_index, redo);
     case EcsRuleYield:
         return eval_yield(it, op, op_index, redo);
     default:
@@ -19772,7 +20867,7 @@ void populate_iterator(
         int32_t v = rule->subject_variables[i];
         if (v != -1) {
             ecs_rule_var_t *var = &rule->variables[v];
-            if (var->kind == EcsRuleVarKindEntity) {
+            if (var->kind == EcsRuleVarKindEntity && var->name[0] != '.') {
                 iter->subjects[i] = regs[var->id].entity;
             }
         }
@@ -19810,11 +20905,26 @@ bool is_control_flow(
     }
 }
 
+bool ecs_rule_next(
+    ecs_iter_t *it)
+{
+    ecs_check(it != NULL, ECS_INVALID_PARAMETER, NULL);
+    ecs_check(it->next == ecs_rule_next, ECS_INVALID_PARAMETER, NULL);
+
+    if (flecs_iter_next_row(it)) {
+        return true;
+    }
+
+    return flecs_iter_next_instanced(it, ecs_rule_next_instanced(it));
+error:
+    return false;
+}
+
 /* Iterator next function. This evaluates the program until it reaches a Yield
  * operation, and returns the intermediate result(s) to the application. An
  * iterator can, depending on the program, either return a table, entity, or
  * just true/false, in case a rule doesn't contain the this variable. */
-bool ecs_rule_next(
+bool ecs_rule_next_instanced(
     ecs_iter_t *it)
 {
     ecs_check(it != NULL, ECS_INVALID_PARAMETER, NULL);
@@ -19838,7 +20948,10 @@ bool ecs_rule_next(
         for (i = 0; i < rule->filter.term_count; i ++) {
             ecs_term_t *t = &rule->filter.terms[i];
             ecs_term_id_t *subj = &t->subj;
-            if (subj->var == EcsVarIsEntity && subj->entity != EcsThis) {
+            ecs_assert(subj->var == EcsVarIsVariable || subj->entity != EcsThis,
+                ECS_INTERNAL_ERROR, NULL);
+
+            if (subj->var == EcsVarIsEntity) {
                 it->subjects[i] = subj->entity;
             }
         }
@@ -19907,7 +21020,7 @@ bool ecs_rule_next(
         }
     } while (iter->op != -1);
 
-    ecs_rule_iter_free(it);
+    ecs_iter_fini(it);
 
 error:
     return false;
@@ -19918,6 +21031,7 @@ error:
 
 #ifdef FLECS_MODULE
 
+#include <ctype.h>
 
 char* ecs_module_path_from_c(
     const char *c_name)
@@ -21237,7 +22351,7 @@ void set_member(ecs_iter_t *it) {
             continue;
         }
 
-        add_member_to_struct(world, parent, e, member);
+        add_member_to_struct(world, parent, e, &member[i]);
     }
 }
 
@@ -21521,7 +22635,8 @@ void FlecsMetaImport(
     #define ECS_PRIMITIVE(world, type, primitive_kind)\
         ecs_entity_init(world, &(ecs_entity_desc_t) {\
             .entity = ecs_id(ecs_##type##_t),\
-            .name = #type });\
+            .name = #type,\
+            .symbol = #type });\
         ecs_set(world, ecs_id(ecs_##type##_t), EcsPrimitive, {\
             .kind = primitive_kind\
         });
@@ -22017,7 +23132,7 @@ int ecs_meta_pop(
     return 0;
 }
 
-int ecs_meta_is_collection(
+bool ecs_meta_is_collection(
     ecs_meta_cursor_t *cursor)
 {
     ecs_meta_scope_t *scope = get_scope(cursor);
@@ -22527,10 +23642,10 @@ int expr_ser_primitive(
         ecs_strbuf_append(str, "%lld", *(int64_t*)base);
         break;
     case EcsF32:
-        ecs_strbuf_appendflt(str, (double)*(float*)base);
+        ecs_strbuf_appendflt(str, (double)*(float*)base, 0);
         break;
     case EcsF64:
-        ecs_strbuf_appendflt(str, *(double*)base);
+        ecs_strbuf_appendflt(str, *(double*)base, 0);
         break;
     case EcsIPtr:
         ecs_strbuf_append(str, "%i", *(intptr_t*)base);
@@ -23262,6 +24377,8 @@ error:
 #endif
 
 #ifdef FLECS_STATS
+
+#include <stdio.h>
 
 static
 int32_t t_next(
@@ -24764,7 +25881,7 @@ void json_number(
     ecs_strbuf_t *buf,
     double value)
 {
-    ecs_strbuf_appendflt(buf, value);
+    ecs_strbuf_appendflt(buf, value, '"');
 }
 
 void json_true(
@@ -25056,6 +26173,14 @@ int json_ser_type_op(
     case EcsOpPop:
         /* Should not be parsed as single op */
         ecs_throw(ECS_INVALID_PARAMETER, NULL);
+        break;
+    case EcsOpF32:
+        ecs_strbuf_appendflt(str, 
+            (ecs_f64_t)*(ecs_f32_t*)ECS_OFFSET(ptr, op->offset), '"');
+        break;
+    case EcsOpF64:
+        ecs_strbuf_appendflt(str, 
+            *(ecs_f64_t*)ECS_OFFSET(ptr, op->offset), '"');
         break;
     case EcsOpEnum:
         if (json_ser_enum(world, op, ECS_OFFSET(ptr, op->offset), str)) {
@@ -25967,6 +27092,8 @@ int json_typeinfo_ser_array(
 {
     json_array_push(str);
     ecs_strbuf_list_appendstr(str, "\"array\"");
+
+    json_next(str);
     if (json_typeinfo_ser_type(world, elem_type, str)) {
         goto error;
     }
@@ -26006,6 +27133,8 @@ int json_typeinfo_ser_vector(
 
     json_array_push(str);
     ecs_strbuf_list_appendstr(str, "\"vector\"");
+
+    json_next(str);
     if (json_typeinfo_ser_type(world, arr->type, str)) {
         goto error;
     }
@@ -26594,6 +27723,7 @@ void FlecsCoreDocImport(
     ecs_doc_set_link(world, EcsFlecs, "https://github.com/SanderMertens/flecs");
 
     ecs_doc_set_brief(world, EcsFlecsCore, "Flecs module with builtin components");
+    ecs_doc_set_brief(world, EcsFlecsHidden, "Flecs module with internal/anonymous entities");
 
     ecs_doc_set_brief(world, EcsWorld, "Entity associated with world");
 
@@ -26606,10 +27736,17 @@ void FlecsCoreDocImport(
     ecs_doc_set_brief(world, EcsName, "Tag used with EcsIdentifier to signal entity name");
     ecs_doc_set_brief(world, EcsSymbol, "Tag used with EcsIdentifier to signal entity symbol");
 
+    ecs_doc_set_brief(world, ecs_id(EcsComponentLifecycle), "Callbacks for component constructors, destructors, copy and move operations");
+
     ecs_doc_set_brief(world, EcsTransitive, "Transitive relation property");
-    ecs_doc_set_brief(world, EcsTransitiveSelf, "TransitiveSelf relation property");
+    ecs_doc_set_brief(world, EcsReflexive, "Reflexive relation property");
     ecs_doc_set_brief(world, EcsFinal, "Final relation property");
+    ecs_doc_set_brief(world, EcsDontInherit, "DontInherit relation property");
     ecs_doc_set_brief(world, EcsTag, "Tag relation property");
+    ecs_doc_set_brief(world, EcsAcyclic, "Acyclic relation property");
+    ecs_doc_set_brief(world, EcsExclusive, "Exclusive relation property");
+    ecs_doc_set_brief(world, EcsSymmetric, "Symmetric relation property");
+    ecs_doc_set_brief(world, EcsWith, "With relation property");
     ecs_doc_set_brief(world, EcsOnDelete, "OnDelete relation cleanup property");
     ecs_doc_set_brief(world, EcsOnDeleteObject, "OnDeleteObject relation cleanup property");
     ecs_doc_set_brief(world, EcsDefaultChildComponent, "Sets default component hint for children of entity");
@@ -26623,15 +27760,20 @@ void FlecsCoreDocImport(
     ecs_doc_set_brief(world, EcsOnSet, "Builtin OnSet event");
     ecs_doc_set_brief(world, EcsUnSet, "Builtin UnSet event");
 
-    ecs_doc_set_link(world, EcsTransitive, URL_ROOT "#transitive-relations");
-    ecs_doc_set_link(world, EcsTransitiveSelf, URL_ROOT "#inclusive-relations");
-    ecs_doc_set_link(world, EcsFinal, URL_ROOT "#final-entities");
-    ecs_doc_set_link(world, EcsTag, URL_ROOT "#tag-relations");
-    ecs_doc_set_link(world, EcsOnDelete, URL_ROOT "#relation-cleanup-properties");
-    ecs_doc_set_link(world, EcsOnDeleteObject, URL_ROOT "#relation-cleanup-properties");
-    ecs_doc_set_link(world, EcsRemove, URL_ROOT "#relation-cleanup-properties");
-    ecs_doc_set_link(world, EcsDelete, URL_ROOT "#relation-cleanup-properties");
-    ecs_doc_set_link(world, EcsThrow, URL_ROOT "#relation-cleanup-properties");
+    ecs_doc_set_link(world, EcsTransitive, URL_ROOT "#transitive-property");
+    ecs_doc_set_link(world, EcsReflexive, URL_ROOT "#reflexive-property");
+    ecs_doc_set_link(world, EcsFinal, URL_ROOT "#final-property");
+    ecs_doc_set_link(world, EcsDontInherit, URL_ROOT "#dontinherit-property");
+    ecs_doc_set_link(world, EcsTag, URL_ROOT "#tag-property");
+    ecs_doc_set_link(world, EcsAcyclic, URL_ROOT "#acyclic-property");
+    ecs_doc_set_link(world, EcsExclusive, URL_ROOT "#exclusive-property");
+    ecs_doc_set_link(world, EcsSymmetric, URL_ROOT "#symmetric-property");
+    ecs_doc_set_link(world, EcsWith, URL_ROOT "#with-property");
+    ecs_doc_set_link(world, EcsOnDelete, URL_ROOT "#cleanup-properties");
+    ecs_doc_set_link(world, EcsOnDeleteObject, URL_ROOT "#cleanup-properties");
+    ecs_doc_set_link(world, EcsRemove, URL_ROOT "#cleanup-properties");
+    ecs_doc_set_link(world, EcsDelete, URL_ROOT "#cleanup-properties");
+    ecs_doc_set_link(world, EcsThrow, URL_ROOT "#cleanup-properties");
     ecs_doc_set_link(world, EcsIsA, URL_ROOT "#the-isa-relation");
     ecs_doc_set_link(world, EcsChildOf, URL_ROOT "#the-childof-relation"); 
     
@@ -26714,7 +27856,10 @@ void FlecsCoreDocImport(
 
 #ifdef FLECS_HTTP
 
-#if defined _MSC_VER || defined _WIN32
+#if defined(ECS_TARGET_WINDOWS)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #pragma comment(lib, "Ws2_32.lib")
 #include <WinSock2.h>
 #include <Ws2tcpip.h>
@@ -26828,7 +27973,7 @@ ecs_size_t http_send(
     ecs_size_t size, 
     int flags)
 {
-#ifndef _MSC_VER
+#ifndef ECS_TARGET_MSVC
     ssize_t send_bytes = send(sock, buf, flecs_itosize(size), flags);
     return flecs_itoi32(send_bytes);
 #else
@@ -26845,7 +27990,7 @@ ecs_size_t http_recv(
     int flags)
 {
     ecs_size_t ret;
-#ifndef _MSC_VER
+#ifndef ECS_TARGET_MSVC
     ssize_t recv_bytes = recv(sock, buf, flecs_itosize(size), flags);
     ret = flecs_itoi32(recv_bytes);
 #else
@@ -26892,7 +28037,7 @@ static
 void http_close(
     ecs_http_socket_t sock)
 {
-#if defined _MSC_VER || defined _WIN32
+#if defined(ECS_TARGET_WINDOWS)
     closesocket(sock);
 #else
     shutdown(sock, SHUT_RDWR);
@@ -27341,7 +28486,7 @@ int accept_connections(
     const struct sockaddr* addr, 
     ecs_size_t addr_len) 
 {
-#if defined _MSC_VER || defined _WIN32
+#ifdef ECS_TARGET_WINDOWS
     /* If on Windows, test if winsock needs to be initialized */
     SOCKET testsocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (SOCKET_ERROR == testsocket && WSANOTINITIALISED == WSAGetLastError()) {
@@ -27547,7 +28692,7 @@ ecs_http_server_t* ecs_http_server_init(
     srv->connections = flecs_sparse_new(ecs_http_connection_impl_t);
     srv->requests = flecs_sparse_new(ecs_http_request_impl_t);
 
-#if !defined _MSC_VER && !defined _WIN32
+#ifndef ECS_TARGET_WINDOWS
     /* Ignore pipe signal. SIGPIPE can occur when a message is sent to a client
      * but te client already disconnected. */
     signal(SIGPIPE, SIG_IGN);
@@ -27761,6 +28906,7 @@ void FlecsDocImport(
 
 #ifdef FLECS_PARSER
 
+#include <ctype.h>
 
 #define ECS_ANNOTATION_LENGTH_MAX (16)
 
@@ -27787,7 +28933,7 @@ void FlecsDocImport(
 #define TOK_PARENT "parent"
 #define TOK_ALL "all"
 
-#define TOK_OWNED "OVERRIDE"
+#define TOK_OVERRIDE "OVERRIDE"
 
 #define TOK_ROLE_PAIR "PAIR"
 #define TOK_ROLE_AND "AND"
@@ -28097,7 +29243,7 @@ ecs_entity_t parse_role(
         return ECS_SWITCH;
     } else if (!ecs_os_strcmp(token, TOK_ROLE_CASE)) {
         return ECS_CASE;
-    } else if (!ecs_os_strcmp(token, TOK_OWNED)) {
+    } else if (!ecs_os_strcmp(token, TOK_OVERRIDE)) {
         return ECS_OVERRIDE;
     } else if (!ecs_os_strcmp(token, TOK_ROLE_DISABLED)) {
         return ECS_DISABLED;        
@@ -28858,6 +30004,8 @@ error:
 
 #ifdef FLECS_META_C
 
+#include <ctype.h>
+
 #define ECS_META_IDENTIFIER_LENGTH (256)
 
 #define ecs_meta_error(ctx, ptr, ...)\
@@ -28981,7 +30129,7 @@ const char* parse_c_identifier(
         goto error;
     }
 
-    while ((ch = *ptr) && !isspace(ch) && ch != ';' && ch != ',' && ch != ')' && ch != '>') {
+    while ((ch = *ptr) && !isspace(ch) && ch != ';' && ch != ',' && ch != ')' && ch != '>' && ch != '}') {
         /* Type definitions can contain macro's or templates */
         if (ch == '(' || ch == '<') {
             if (!params) {
@@ -29069,7 +30217,14 @@ const char* meta_parse_constant(
 
     /* Parse token, constant identifier */
     ptr = parse_c_identifier(ptr, token->name, NULL, ctx);
+    if (!ptr) {
+        return NULL;
+    }
+
     ptr = ecs_parse_eol_and_whitespace(ptr);
+    if (!ptr) {
+        return NULL;
+    }
 
     /* Explicit value assignment */
     if (*ptr == '=') {
@@ -29800,13 +30955,17 @@ const ecs_entity_t EcsDisabled =              ECS_HI_COMPONENT_ID + 6;
 
 /* Relation properties */
 const ecs_entity_t EcsWildcard =              ECS_HI_COMPONENT_ID + 10;
-const ecs_entity_t EcsThis =                  ECS_HI_COMPONENT_ID + 11;
-const ecs_entity_t EcsTransitive =            ECS_HI_COMPONENT_ID + 12;
-const ecs_entity_t EcsTransitiveSelf =        ECS_HI_COMPONENT_ID + 13;
-const ecs_entity_t EcsFinal =                 ECS_HI_COMPONENT_ID + 14;
-const ecs_entity_t EcsTag =                   ECS_HI_COMPONENT_ID + 15;
-const ecs_entity_t EcsExclusive =             ECS_HI_COMPONENT_ID + 16;
-const ecs_entity_t EcsAcyclic =               ECS_HI_COMPONENT_ID + 17;
+const ecs_entity_t EcsAny =                   ECS_HI_COMPONENT_ID + 11;
+const ecs_entity_t EcsThis =                  ECS_HI_COMPONENT_ID + 12;
+const ecs_entity_t EcsTransitive =            ECS_HI_COMPONENT_ID + 13;
+const ecs_entity_t EcsReflexive =             ECS_HI_COMPONENT_ID + 14;
+const ecs_entity_t EcsSymmetric =             ECS_HI_COMPONENT_ID + 15;
+const ecs_entity_t EcsFinal =                 ECS_HI_COMPONENT_ID + 16;
+const ecs_entity_t EcsDontInherit =           ECS_HI_COMPONENT_ID + 17;
+const ecs_entity_t EcsTag =                   ECS_HI_COMPONENT_ID + 18;
+const ecs_entity_t EcsExclusive =             ECS_HI_COMPONENT_ID + 19;
+const ecs_entity_t EcsAcyclic =               ECS_HI_COMPONENT_ID + 20;
+const ecs_entity_t EcsWith =                  ECS_HI_COMPONENT_ID + 21;
 
 /* Builtin relations */
 const ecs_entity_t EcsChildOf =               ECS_HI_COMPONENT_ID + 25;
@@ -29927,6 +31086,75 @@ ecs_stage_t *flecs_stage_from_world(
     return NULL;
 }
 
+ecs_world_t* flecs_suspend_readonly(
+    const ecs_world_t *stage_world,
+    ecs_suspend_readonly_state_t *state)
+{
+    ecs_assert(stage_world != NULL, ECS_INTERNAL_ERROR, NULL);
+    ecs_assert(state != NULL, ECS_INTERNAL_ERROR, NULL);
+
+    ecs_world_t *world = (ecs_world_t*)ecs_get_world(stage_world);
+    ecs_poly_assert(world, ecs_world_t);
+
+    bool is_readonly = world->is_readonly;
+    bool is_deferred = ecs_is_deferred(world);
+
+    if (!world->is_readonly && !is_deferred) {
+        state->is_readonly = false;
+        state->is_deferred = false;
+        return world;
+    }
+
+    /* Cannot suspend when running with multiple threads */
+    ecs_assert(ecs_get_stage_count(world) <= 1, 
+        ECS_INVALID_WHILE_ITERATING, NULL);
+
+    state->is_readonly = is_readonly;
+    state->is_deferred = is_deferred;
+
+    /* Silence readonly checks */
+    world->is_readonly = false;
+
+    /* Hack around safety checks (this ought to look ugly) */
+    ecs_world_t *temp_world = world;
+    ecs_stage_t *stage = flecs_stage_from_world(&temp_world);
+    state->defer_count = stage->defer;
+    state->defer_queue = stage->defer_queue;
+    state->scope = world->stage.scope;
+    state->with = world->stage.with;
+    stage->defer = 0;
+    stage->defer_queue = NULL;
+
+    if (&world->stage != (ecs_stage_t*)stage_world) {
+        world->stage.scope = stage->scope;
+        world->stage.with = stage->with;
+    }
+    
+    return world;
+}
+
+void flecs_resume_readonly(
+    ecs_world_t *world,
+    ecs_suspend_readonly_state_t *state)
+{
+    ecs_poly_assert(world, ecs_world_t);
+    ecs_assert(state != NULL, ECS_INTERNAL_ERROR, NULL);
+    
+    ecs_world_t *temp_world = world;
+    ecs_stage_t *stage = flecs_stage_from_world(&temp_world);
+
+    if (state->is_readonly || state->is_deferred) {
+        ecs_force_aperiodic(world);
+
+        /* Restore readonly state / defer count */
+        world->is_readonly = state->is_readonly;
+        stage->defer = state->defer_count;
+        stage->defer_queue = state->defer_queue;
+        world->stage.scope = state->scope;
+        world->stage.with = state->with;
+    }
+}
+
 /* Evaluate component monitor. If a monitored entity changed it will have set a
  * flag in one of the world's component monitors. Queries can register 
  * themselves with component monitors to determine whether they need to rematch
@@ -29935,6 +31163,8 @@ static
 void eval_component_monitor(
     ecs_world_t *world)
 {
+    ecs_poly_assert(world, ecs_world_t);
+
     ecs_relation_monitor_t *rm = &world->monitors;
 
     if (!rm->is_dirty) {
@@ -30077,15 +31307,24 @@ void clean_tables(
 {
     int32_t i, count = flecs_sparse_count(world->store.tables);
 
-    for (i = 0; i < count; i ++) {
-        ecs_table_t *t = flecs_sparse_get_dense(world->store.tables, ecs_table_t, i);
+    /* Ensure that first table in sparse set has id 0. This is a dummy table
+     * that only exists so that there is no table with id 0 */
+    ecs_table_t *first = flecs_sparse_get_dense(world->store.tables, 
+        ecs_table_t, 0);
+    ecs_assert(first->id == 0, ECS_INTERNAL_ERROR, NULL);
+    (void)first;
+
+    for (i = 1; i < count; i ++) {
+        ecs_table_t *t = flecs_sparse_get_dense(world->store.tables, 
+            ecs_table_t, i);
         flecs_table_free(world, t);
     }
 
     /* Free table types separately so that if application destructors rely on
      * a type it's still valid. */
-    for (i = 0; i < count; i ++) {
-        ecs_table_t *t = flecs_sparse_get_dense(world->store.tables, ecs_table_t, i);
+    for (i = 1; i < count; i ++) {
+        ecs_table_t *t = flecs_sparse_get_dense(world->store.tables, 
+            ecs_table_t, i);
         flecs_table_free_type(t);
     }    
 
@@ -30251,13 +31490,18 @@ ecs_world_t *ecs_mini(void) {
 
     world->self = world;
     world->type_info = flecs_sparse_new(ecs_type_info_t);
-    world->id_index = ecs_map_new(ecs_id_record_t, 8);
+    world->id_index = ecs_map_new(ecs_id_record_t*, ECS_HI_COMPONENT_ID);
     flecs_observable_init(&world->observable);
     world->iterable.init = world_iter_init;
 
     world->queries = flecs_sparse_new(ecs_query_t);
     world->triggers = flecs_sparse_new(ecs_trigger_t);
     world->observers = flecs_sparse_new(ecs_observer_t);
+    world->id_records = flecs_sparse_new(ecs_id_record_t);
+    
+    world->pending_tables = flecs_sparse_new(ecs_table_t*);
+    world->pending_buffer = flecs_sparse_new(ecs_table_t*);
+
     world->fini_tasks = ecs_vector_new(ecs_entity_t, 0);
     world->aliases = flecs_string_hashmap_new(ecs_entity_t);
     world->symbols = flecs_string_hashmap_new(ecs_entity_t);
@@ -30405,16 +31649,13 @@ void flecs_notify_tables(
             return;
         }
 
-        const ecs_table_record_t *tables = flecs_id_record_tables(idr);
-        int32_t i, count = flecs_id_record_count(idr);
-        for (i = 0; i < count; i ++) {
-            flecs_table_notify(world, tables[i].table, event);
+        ecs_table_iter_t it;
+        for (flecs_idr_iter(idr, &it); it.cur < it.end; ++ it.cur) {
+            flecs_table_notify(world, it.cur->table, event);
         }
 
-        tables = flecs_id_record_empty_tables(idr);
-        count = flecs_id_record_empty_count(idr);
-        for (i = 0; i < count; i ++) {
-            flecs_table_notify(world, tables[i].table, event);
+        for (flecs_idr_empty_iter(idr, &it); it.cur < it.end; ++ it.cur) {
+            flecs_table_notify(world, it.cur->table, event);
         }
     }
 }
@@ -30751,13 +31992,16 @@ void fini_id_index(
 {
     ecs_map_iter_t it = ecs_map_iter(world->id_index);
     ecs_id_record_t *idr;
-    while ((idr = ecs_map_next(&it, ecs_id_record_t, NULL))) {
+    while ((idr = ecs_map_next_ptr(&it, ecs_id_record_t*, NULL))) {
         ecs_table_cache_fini(&idr->cache);
         ecs_map_free(idr->add_refs);
         ecs_map_free(idr->remove_refs);
     }
 
     ecs_map_free(world->id_index);
+    flecs_sparse_free(world->id_records);
+    flecs_sparse_free(world->pending_tables);
+    flecs_sparse_free(world->pending_buffer);
 }
 
 /* Cleanup aliases & symbols */
@@ -30848,7 +32092,7 @@ int ecs_fini(
     
     fini_misc(world);
 
-    flecs_increase_timer_resolution(0);
+    ecs_os_enable_high_timer_resolution(false);
 
     /* End of the world */
     ecs_poly_free(world, ecs_world_t);
@@ -30872,7 +32116,8 @@ void ecs_dim(
 void flecs_eval_component_monitors(
     ecs_world_t *world)
 {
-    ecs_poly_assert(world, ecs_world_t);    
+    ecs_poly_assert(world, ecs_world_t);  
+    flecs_process_pending_tables(world);  
     eval_component_monitor(world);
 }
 
@@ -30901,15 +32146,6 @@ error:
     return;
 }
 
-/* Increase timer resolution based on target fps */
-static 
-void set_timer_resolution(
-    FLECS_FLOAT fps)
-{
-    if(fps >= 60.0f) flecs_increase_timer_resolution(1);
-    else flecs_increase_timer_resolution(0);
-}
-
 void ecs_set_target_fps(
     ecs_world_t *world,
     FLECS_FLOAT fps)
@@ -30919,7 +32155,7 @@ void ecs_set_target_fps(
 
     ecs_measure_frame_time(world, true);
     world->stats.target_fps = fps;
-    set_timer_resolution(fps);
+    ecs_os_enable_high_timer_resolution(fps >= 60.0f);
 error:
     return;
 }
@@ -31251,27 +32487,11 @@ void flecs_delete_table(
     ecs_table_t *table)
 {
     ecs_poly_assert(world, ecs_world_t); 
-
-    /* Notify queries that table is to be removed */
-    flecs_notify_queries(
-        world, &(ecs_query_event_t){
-            .kind = EcsQueryTableUnmatch,
-            .table = table
-        });
-
-    uint64_t id = table->id;
-
-    /* Free resources associated with table */
     flecs_table_free(world, table);
-    flecs_table_free_type(table);
-
-    /* Remove table from sparse set */
-    ecs_assert(id != 0, ECS_INTERNAL_ERROR, NULL);
-    flecs_sparse_remove(world->store.tables, id);
 }
 
 static
-void register_table(
+bool register_table(
     ecs_world_t *world,
     ecs_table_t *table,
     ecs_id_t id,
@@ -31305,10 +32525,12 @@ void register_table(
     if (flecs_check_triggers_for_event(world, id, EcsUnSet)) {
         table->flags |= EcsTableHasUnSet;
     }
+
+    return true;
 }
 
 static
-void unregister_table(
+bool unregister_table(
     ecs_world_t *world,
     ecs_table_t *table,
     ecs_id_t id,
@@ -31318,18 +32540,18 @@ void unregister_table(
 
     ecs_id_record_t *idr = flecs_get_id_record(world, id);
     if (!idr) {
-        return;
+        return false;
     }
 
-    ecs_table_cache_remove(&idr->cache, ecs_table_record_t, table);
-
-    if (ecs_table_cache_is_empty(&idr->cache)) {
-        flecs_clear_id_record(world, id);
+    if (ecs_table_cache_remove(&idr->cache, ecs_table_record_t, table)) {
+        flecs_clear_id_record(world, id, idr);
     }
+
+    return true;
 }
 
 static
-void set_empty(
+bool set_empty(
     ecs_world_t *world,
     ecs_table_t *table,
     ecs_id_t id,
@@ -31339,22 +32561,24 @@ void set_empty(
 
     ecs_id_record_t *idr = flecs_get_id_record(world, id);
     if (idr) {
-        ecs_table_cache_set_empty(&idr->cache, table, 
+        return ecs_table_cache_set_empty(&idr->cache, table, 
             ecs_table_count(table) == 0);
     }
+    return false;
 }
 
 static
-void for_each_id(
+bool for_each_id(
     ecs_world_t *world,
     ecs_table_t *table,
-    void(*action)(ecs_world_t*, ecs_table_t*, ecs_id_t, int32_t),
+    bool(*action)(ecs_world_t*, ecs_table_t*, ecs_id_t, int32_t),
     bool set_watch)
 {
     int32_t i, count = ecs_vector_count(table->type);
     ecs_id_t *ids = ecs_vector_first(table->type, ecs_id_t);
     bool has_childof = false;
-    
+    bool result = false;
+
     for (i = 0; i < count; i ++) {
         ecs_entity_t id = ids[i];
 
@@ -31363,20 +32587,20 @@ void for_each_id(
             has_childof = true;
         } 
 
-        action(world, table, ecs_strip_generation(id), i);
-        action(world, table, EcsWildcard, i);
+        result |= action(world, table, ecs_strip_generation(id), i);
+        result |= action(world, table, EcsWildcard, i);
 
         if (ECS_HAS_ROLE(id, PAIR)) {
             ecs_entity_t pred_w_wildcard = ecs_pair(
                 ECS_PAIR_RELATION(id), EcsWildcard);       
-            action(world, table, pred_w_wildcard, i);
+            result |= action(world, table, pred_w_wildcard, i);
 
             ecs_entity_t obj_w_wildcard = ecs_pair(
                 EcsWildcard, ECS_PAIR_OBJECT(id));
-            action(world, table, obj_w_wildcard, i);
+            result |= action(world, table, obj_w_wildcard, i);
 
             ecs_entity_t all_wildcard = ecs_pair(EcsWildcard, EcsWildcard);
-            action(world, table, all_wildcard, i);
+            result |= action(world, table, all_wildcard, i);
 
             if (set_watch) {
                 ecs_entity_t rel = ecs_pair_relation(world, id);
@@ -31390,7 +32614,7 @@ void for_each_id(
         } else {
             if (id & ECS_ROLE_MASK) {
                 id &= ECS_COMPONENT_MASK;
-                action(world, table, ecs_pair(id, EcsWildcard), i);
+                result |= action(world, table, ecs_pair(id, EcsWildcard), i);
             }
 
             if (set_watch) {
@@ -31400,8 +32624,10 @@ void for_each_id(
     }
 
     if (!has_childof) {
-        action(world, table, ecs_pair(EcsChildOf, 0), 0);
+        result |= action(world, table, ecs_pair(EcsChildOf, 0), 0);
     }
+
+    return result;
 }
 
 void flecs_register_table(
@@ -31416,28 +32642,124 @@ void flecs_unregister_table(
     ecs_table_t *table)
 {
     for_each_id(world, table, unregister_table, false);
+}
 
-    ecs_ids_t key = {
-        .array = ecs_vector_first(table->type, ecs_id_t),
-        .count = ecs_vector_count(table->type)
-    };
+/** Walk over tables that had a state change which requires bookkeeping */
+void flecs_process_pending_tables(
+    const ecs_world_t *world_r)
+{
+    ecs_poly_assert(world_r, ecs_world_t);
 
-    flecs_hashmap_remove(world->store.table_map, &key, ecs_table_t*);
+    /* We can't update the administration while in readonly mode, but we can
+     * ensure that when this function is called there are no pending events. */
+    if (world_r->is_readonly) {
+        ecs_assert(flecs_sparse_count(world_r->pending_tables) == 0,
+            ECS_INTERNAL_ERROR, NULL);
+        return;
+    }
+
+    /* Safe to cast, world is not readonly */
+    ecs_world_t *world = (ecs_world_t*)world_r;
+
+    /* If pending buffer is NULL there already is a stackframe that's iterating
+     * the table list. This can happen when a trigger for a table event results
+     * in a mutation that causes another table to change state. A typical 
+     * example of this is a system that becomes active/inactive as the result of
+     * a query (and as a result, its matched tables) becoming empty/non empty */
+    if (!world->pending_buffer) {
+        return;
+    }
+
+    /* Swap buffer. The logic could in theory have been implemented with a
+     * single sparse set, but that would've complicated (and slowed down) the
+     * iteration. Additionally, by using a double buffer approach we can still
+     * keep most of the original ordering of events intact, which is desirable
+     * as it means that the ordering of tables in the internal datastructures is
+     * more predictable. */
+    int32_t i, count = flecs_sparse_count(world->pending_tables);
+    if (!count) {
+        return;
+    }
+
+    do {
+        ecs_sparse_t *pending_tables = world->pending_tables;
+        world->pending_tables = world->pending_buffer;
+        world->pending_buffer = NULL;
+
+        for (i = 0; i < count; i ++) {
+            ecs_table_t *table = flecs_sparse_get_dense(
+                pending_tables, ecs_table_t*, i)[0];
+            if (!table->id) {
+                /* Table is being deleted, ignore empty events */
+                continue;
+            }
+
+            /* For each id in the table, add it to the empty/non empty list
+             * based on its current state */
+            if (for_each_id(world, table, set_empty, false)) {
+                /* Only emit an event when there was a change in the 
+                 * administration. It is possible that a table ended up in the
+                 * pending_tables list by going from empty->non-empty, but then
+                 * became empty again. By the time we run this code, no changes
+                 * in the administration would actually be made. */
+                ecs_ids_t ids = {
+                    .array = ecs_vector_first(table->type, ecs_id_t),
+                    .count = ecs_vector_count(table->type)
+                };
+
+                ecs_emit(world, &(ecs_event_desc_t) {
+                    .event = ecs_table_count(table) 
+                        ? EcsOnTableFill 
+                        : EcsOnTableEmpty
+                        ,
+                    .table = table,
+                    .ids = &ids,
+                    .observable = world,
+                    .table_event = true
+                });
+            }
+        }
+        flecs_sparse_clear(pending_tables);
+
+        world->pending_buffer = pending_tables;
+    } while ((count = flecs_sparse_count(world->pending_tables)));
 }
 
 void flecs_table_set_empty(
     ecs_world_t *world,
     ecs_table_t *table)
 {
-    for_each_id(world, table, set_empty, false);
+    ecs_poly_assert(world, ecs_world_t);
+    ecs_assert(!world->is_readonly, ECS_INTERNAL_ERROR, NULL);
+
+    flecs_sparse_set_generation(world->pending_tables, (uint32_t)table->id);
+    flecs_sparse_ensure(world->pending_tables, ecs_table_t*, 
+        (uint32_t)table->id)[0] = table;
 }
 
 ecs_id_record_t* flecs_ensure_id_record(
     ecs_world_t *world,
     ecs_id_t id)
 {
-    ecs_id_record_t *idr = ecs_map_ensure(world->id_index, ecs_id_record_t, 
-        ecs_strip_generation(id));
+    ecs_id_record_t **idr_ptr = ecs_map_ensure(world->id_index, 
+        ecs_id_record_t*, ecs_strip_generation(id));
+    ecs_id_record_t *idr;
+    if (!*idr_ptr) {
+        idr = flecs_sparse_add(world->id_records, ecs_id_record_t);
+        idr->id = flecs_sparse_last_id(world->id_records);
+        *idr_ptr = idr;
+
+        /* If id is a pair, inherit flags from relation id record */
+        if (ECS_HAS_ROLE(id, PAIR)) {
+            ecs_id_record_t *idr_r = flecs_get_id_record(
+                world, ECS_PAIR_RELATION(id));
+            if (idr_r) {
+                idr->flags = idr_r->flags;
+            }
+        }
+    } else {
+        idr = *idr_ptr;
+    }
 
     if (!ecs_table_cache_is_initialized(&idr->cache)) {
         ecs_table_cache_init(&idr->cache, ecs_table_record_t, world, NULL);
@@ -31450,7 +32772,7 @@ ecs_id_record_t* flecs_get_id_record(
     const ecs_world_t *world,
     ecs_id_t id)
 {
-    return ecs_map_get(world->id_index, ecs_id_record_t, 
+    return ecs_map_get_ptr(world->id_index, ecs_id_record_t*,
         ecs_strip_generation(id));
 }
 
@@ -31499,19 +32821,16 @@ void flecs_register_remove_ref(
 
 void flecs_clear_id_record(
     ecs_world_t *world,
-    ecs_id_t id)    
+    ecs_id_t id,
+    ecs_id_record_t *idr_ptr)
 {
     if (world->is_fini) {
         return;
     }
-    
-    ecs_id_record_t *idr_ptr = flecs_get_id_record(world, id);
-    if (!idr_ptr) {
-        return;
-    }
 
     ecs_id_record_t idr = *idr_ptr;
-
+    
+    flecs_sparse_remove(world->id_records, idr.id);
     ecs_map_remove(world->id_index, ecs_strip_generation(id));
 
     ecs_table_cache_fini_delete_all(world, &idr.cache, ecs_table_record_t);
@@ -31542,40 +32861,75 @@ const ecs_table_record_t* flecs_id_record_table(
     return ecs_table_cache_get(&idr->cache, ecs_table_record_t, table);
 }
 
-const ecs_table_record_t* flecs_id_record_tables(
-    const ecs_id_record_t *idr)
+bool flecs_idr_iter(
+    ecs_id_record_t *idr,
+    ecs_table_iter_t *out)
 {
+    ecs_assert(idr != NULL, ECS_INTERNAL_ERROR, NULL);
+    ecs_assert(out != NULL, ECS_INTERNAL_ERROR, NULL);
+
+    int32_t count = ecs_table_cache_count(&idr->cache);
+    out->begin = ecs_table_cache_tables(&idr->cache, ecs_table_record_t);
+    out->end = ecs_offset(out->begin, ecs_table_record_t, count);
+    out->cur = out->begin;
+    return count != 0;
+}
+
+bool flecs_idr_empty_iter(
+    ecs_id_record_t *idr,
+    ecs_table_iter_t *out)
+{
+    ecs_assert(idr != NULL, ECS_INTERNAL_ERROR, NULL);
+    ecs_assert(out != NULL, ECS_INTERNAL_ERROR, NULL);
+    
+    int32_t count = ecs_table_cache_empty_count(&idr->cache);
+    out->begin = ecs_table_cache_empty_tables(&idr->cache, ecs_table_record_t);
+    out->end = ecs_offset(out->begin, ecs_table_record_t, count);
+    out->cur = out->begin;
+    return count != 0;
+}
+
+ecs_id_record_t* flecs_table_iter(
+    ecs_world_t *world,
+    ecs_id_t id,
+    ecs_table_iter_t *out)
+{
+    ecs_id_record_t *idr = flecs_get_id_record(world, id);
     if (!idr) {
         return NULL;
     }
-    return ecs_table_cache_tables(&idr->cache, ecs_table_record_t);
+
+    flecs_process_pending_tables(world);
+
+    ecs_assert( flecs_sparse_count(world->pending_tables) == 0, 
+        ECS_INTERNAL_ERROR, NULL);
+    flecs_idr_iter(idr, out);
+    return idr;
 }
 
-const ecs_table_record_t* flecs_id_record_empty_tables(
-    const ecs_id_record_t *idr)
+ecs_id_record_t* flecs_empty_table_iter(
+    ecs_world_t *world,
+    ecs_id_t id,
+    ecs_table_iter_t *out)
 {
+    ecs_id_record_t *idr = flecs_get_id_record(world, id);
     if (!idr) {
         return NULL;
     }
-    return ecs_table_cache_empty_tables(&idr->cache, ecs_table_record_t);
+
+    flecs_process_pending_tables(world);
+
+    ecs_assert( flecs_sparse_count(world->pending_tables) == 0, 
+        ECS_INTERNAL_ERROR, NULL);
+    flecs_idr_empty_iter(idr, out);
+    return idr;
 }
 
-int32_t flecs_id_record_count(
-    const ecs_id_record_t *idr)
+void ecs_force_aperiodic(
+    ecs_world_t *world)
 {
-    if (!idr) {
-        return 0;
-    }
-    return ecs_table_cache_count(&idr->cache);
-}
-
-int32_t flecs_id_record_empty_count(
-    const ecs_id_record_t *idr)
-{
-    if (!idr) {
-        return 0;
-    }
-    return ecs_table_cache_empty_count(&idr->cache);
+    flecs_process_pending_tables(world);
+    flecs_eval_component_monitors(world);
 }
 
 
@@ -31618,17 +32972,14 @@ void notify_subset(
     ecs_ids_t *ids)
 {
     ecs_id_t pair = ecs_pair(EcsWildcard, entity);
-    ecs_id_record_t *idr = flecs_get_id_record(world, pair);
+    ecs_table_iter_t idt;
+    ecs_id_record_t *idr = flecs_table_iter(world, pair, &idt);
     if (!idr) {
         return;
     }
 
-    ecs_table_record_t *trs = ecs_table_cache_tables(
-        &idr->cache, ecs_table_record_t);
-    int32_t i, count = ecs_table_cache_count(&idr->cache);
-
-    for (i = 0; i < count; i ++) {
-        ecs_table_record_t *tr = &trs[i];
+    for (; idt.cur < idt.end; ++ idt.cur) {
+        const ecs_table_record_t *tr = idt.cur;
         ecs_table_t *table = tr->table;
         ecs_id_t id = ecs_vector_get(table->type, ecs_id_t, tr->column)[0];
         ecs_entity_t rel = ECS_PAIR_RELATION(id);
@@ -31644,6 +32995,10 @@ void notify_subset(
         it->other_table = NULL;
         it->offset = 0;
         it->count = entity_count;
+
+        /* Treat as new event as this could trigger observers again for
+         * different tables. */
+        world->event_id ++;
 
         flecs_set_triggers_notify(it, observable, ids, event,
             ecs_pair(rel, EcsWildcard));
@@ -31682,6 +33037,7 @@ void ecs_emit(
     ecs_table_t *table = desc->table;
     int32_t row = desc->offset;
     int32_t i, count = desc->count;
+    ecs_entity_t relation = desc->relation;
 
     if (!count) {
         count = ecs_table_count(table) - row;
@@ -31705,7 +33061,12 @@ void ecs_emit(
     ecs_observable_t *observable = ecs_get_observable(desc->observable);
     ecs_check(observable != NULL, ECS_INVALID_PARAMETER, NULL);
 
-    flecs_triggers_notify(&it, observable, ids, event);
+    if (!desc->relation) {
+        flecs_triggers_notify(&it, observable, ids, event);
+    } else {
+        flecs_set_triggers_notify(&it, observable, ids, event, 
+            ecs_pair(relation, EcsWildcard));
+    }
 
     if (count && !desc->table_event) {
         ecs_record_t **recs = ecs_vector_get(
@@ -31733,6 +33094,7 @@ error:
 }
 
 
+#include <ctype.h>
 
 static
 void term_error(
@@ -31809,10 +33171,10 @@ int finalize_term_var(
 {
     if (identifier->var == EcsVarDefault) {
         const char *var = ecs_identifier_is_var(identifier->name);
-        if (ecs_identifier_is_var(identifier->name)) {
-            char *var_id = ecs_os_strdup(var);
+        if (var) {
+            char *var_dup = ecs_os_strdup(var);
             ecs_os_free(identifier->name);
-            identifier->name = var_id;
+            identifier->name = var_dup;
             identifier->var = EcsVarIsVariable;
         }
     }
@@ -31888,7 +33250,7 @@ ecs_entity_t term_id_entity(
     ecs_term_id_t *term_id)
 {
     if (term_id->entity && term_id->entity != EcsThis && 
-        term_id->entity != EcsWildcard) 
+        term_id->entity != EcsWildcard && term_id->entity != EcsAny) 
     {
         if (!(term_id->entity & ECS_ROLE_MASK)) {
             return term_id->entity;
@@ -31901,7 +33263,7 @@ ecs_entity_t term_id_entity(
             !ecs_identifier_is_var(term_id->name))) 
         {
             ecs_entity_t e = ecs_lookup_fullpath(world, term_id->name);
-            if (e != EcsWildcard && e != EcsThis) {
+            if (e != EcsWildcard && e != EcsThis && e != EcsAny) {
                 return e;
             }
             return 0;
@@ -31932,6 +33294,16 @@ int finalize_term_vars(
 }
 
 static
+bool entity_is_var(
+    ecs_entity_t e)
+{
+    if (e == EcsThis || e == EcsWildcard || e == EcsAny) {
+        return true;
+    }
+    return false;
+}
+
+static
 int finalize_term_identifiers(
     const ecs_world_t *world,
     ecs_term_t *term,
@@ -31953,7 +33325,14 @@ int finalize_term_identifiers(
     /* By default select supersets for subjects. For example, when an entity has
      * (IsA, SpaceShip), also search the components of SpaceShip. */
     if (term->subj.set.mask == EcsDefaultSet) {
-        term->subj.set.mask = EcsSelf|EcsSuperSet;
+        ecs_entity_t e = term_id_entity(world, &term->pred);
+
+        /* If the component has the DontInherit tag, use EcsSelf */
+        if (!e || !ecs_has_id(world, e, EcsDontInherit)) {
+            term->subj.set.mask = EcsSelf|EcsSuperSet;
+        } else {
+            term->subj.set.mask = EcsSelf;
+        }
     }
 
     /* By default select self for objects. */
@@ -31990,13 +33369,13 @@ int finalize_term_identifiers(
         term->subj.entity = EcsThis;
     }
     
-    if (term->pred.entity == EcsThis) {
+    if (entity_is_var(term->pred.entity)) {
         term->pred.var = EcsVarIsVariable;
     }
-    if (term->subj.entity == EcsThis) {
+    if (entity_is_var(term->subj.entity)) {
         term->subj.var = EcsVarIsVariable;
     }
-    if (term->obj.entity == EcsThis) {
+    if (entity_is_var(term->obj.entity)) {
         term->obj.var = EcsVarIsVariable;
     }
 
@@ -32204,6 +33583,45 @@ int verify_term_consistency(
         }
     }
 
+    if (term->pred.var == EcsVarIsEntity) {
+        const ecs_term_id_t *tsubj = &term->subj;
+        const ecs_term_id_t *tobj = &term->obj;
+
+        if (ecs_term_id_is_set(tsubj) && ecs_term_id_is_set(tobj)) {
+            if (tsubj->var == tobj->var) {
+                bool is_same = false;
+
+                if (tsubj->var == EcsVarIsEntity) {
+                    is_same = tsubj->entity == tobj->entity;
+                } else if (tsubj->name && tobj->name) {
+                    is_same = !ecs_os_strcmp(tsubj->name, tobj->name);
+                }
+
+                if (is_same && ecs_has_id(world, term->pred.entity, EcsAcyclic)
+                    && !ecs_has_id(world, term->pred.entity, EcsReflexive)) 
+                {
+                    char *pred_str = ecs_get_fullpath(world, term->pred.entity);
+                    term_error(world, term, name, "term with acyclic relation"
+                        " '%s' cannot have same subject and object",
+                            pred_str);
+                    ecs_os_free(pred_str);
+                    return -1;
+                }
+            }
+        }
+    }
+
+    if (term->subj.set.relation && !term->subj.set.max_depth) {
+        if (!ecs_has_id(world, term->subj.set.relation, EcsAcyclic)) {
+            char *r_str = ecs_get_fullpath(world, term->subj.set.relation);
+            term_error(world, term, name, 
+                "relation '%s' is used with SuperSet/SubSet but is not acyclic", 
+                    r_str);
+            ecs_os_free(r_str);
+            return -1;
+        }
+    }
+
     return 0;
 }
 
@@ -32226,7 +33644,7 @@ const char* ecs_identifier_is_var(
     }
 
     /* Identifiers that start with _ are variables */
-    if (id[0] == '_') {
+    if (id[0] == '_' && id[1] != 0) {
         return &id[1];
     }
 
@@ -32416,9 +33834,12 @@ ecs_term_t ecs_term_move(
         src->pred.name = NULL;
         src->subj.name = NULL;
         src->obj.name = NULL;
+        dst.move = false;
         return dst;
     } else {
-        return ecs_term_copy(src);
+        ecs_term_t dst = ecs_term_copy(src);
+        dst.move = false;
+        return dst;
     }
 }
 
@@ -32543,7 +33964,6 @@ int ecs_filter_init(
     f.match_anything = true;
 
     if (terms) {
-        terms = desc->terms_buffer;
         term_count = desc->terms_buffer_count;
     } else {
         terms = (ecs_term_t*)desc->terms;
@@ -32587,6 +34007,11 @@ int ecs_filter_init(
                     buffer_count * ECS_SIZEOF(ecs_term_t));
             }
 
+            /* Check for identifiers that have a name that starts with _. If the
+             * variable kind is left to Default, the kind should be set to 
+             * variable and the _ prefix should be removed. */
+            finalize_term_vars(world, &term, name);
+
             terms[term_count] = term;
             term_count ++;
 
@@ -32606,36 +34031,42 @@ int ecs_filter_init(
 #endif
     }
 
+    /* Copy term resources. */
+    if (term_count) {
+        ecs_term_t *dst_terms = terms;
+        if (!f.expr) {
+            if (term_count <= ECS_TERM_CACHE_SIZE) {
+                dst_terms = f.term_cache;
+                f.term_cache_used = true;
+            } else {
+                dst_terms = ecs_os_malloc_n(ecs_term_t, term_count);
+            }
+        }
+
+        for (i = 0; i < term_count; i ++) {
+            dst_terms[i] = ecs_term_move(&terms[i]);
+        }
+        f.terms = dst_terms;
+    } else {
+        f.terms = NULL;
+    }
+
     /* Ensure all fields are consistent and properly filled out */
     if (ecs_filter_finalize(world, &f)) {
         goto error;
     }
 
     *filter_out = f;
-
-    /* Copy term resources. */
-    if (term_count) {
-        if (!filter_out->expr) {
-            if (term_count <= ECS_TERM_CACHE_SIZE) {
-                filter_out->terms = filter_out->term_cache;
-                filter_out->term_cache_used = true;
-            } else {
-                filter_out->terms = ecs_os_malloc_n(ecs_term_t, term_count);
-            }
-        }
-
-        for (i = 0; i < term_count; i ++) {
-            filter_out->terms[i] = ecs_term_move(&terms[i]);
-        }        
-    } else {
-        filter_out->terms = NULL;
+    if (f.term_cache_used) {
+        filter_out->terms = filter_out->term_cache;
     }
-
     filter_out->name = ecs_os_strdup(desc->name);
     filter_out->expr = ecs_os_strdup(desc->expr);
 
     ecs_assert(!filter_out->term_cache_used || 
         filter_out->terms == filter_out->term_cache,
+        ECS_INTERNAL_ERROR, NULL);
+    ecs_assert(filter_out->term_count == f.term_count,
         ECS_INTERNAL_ERROR, NULL);
 
     filter_out->iterable.init = filter_iter_init;
@@ -32715,6 +34146,10 @@ void ecs_filter_fini(
 
     ecs_os_free(filter->name);
     ecs_os_free(filter->expr);
+
+    filter->terms = NULL;
+    filter->name = NULL;
+    filter->expr = NULL;
 }
 
 static
@@ -33218,6 +34653,8 @@ ecs_iter_t ecs_term_iter(
 
     const ecs_world_t *world = ecs_get_world(stage);
 
+    flecs_process_pending_tables(world);
+
     if (ecs_term_finalize(world, NULL, term)) {
         ecs_throw(ECS_INVALID_PARAMETER, NULL);
     }
@@ -33270,25 +34707,35 @@ static
 const ecs_table_record_t *next_table(
     ecs_term_iter_t *iter)
 {
-    const ecs_table_record_t *tables = NULL;
-    ecs_id_record_t *cur = iter->cur;
+    ecs_id_record_t *idr = iter->cur;
+    if (!idr) {
+        return NULL;
+    }
 
+    ecs_table_iter_t it;
+    
     if (iter->empty_tables) {
-        tables = flecs_id_record_empty_tables(cur);
-        if (iter->index >= flecs_id_record_empty_count(cur)) {
+        if (flecs_idr_empty_iter(idr, &it)) {
+            it.cur = it.begin + iter->index;
+        }
+        if (it.cur >= it.end) {
             iter->empty_tables = false;
             iter->index = 0;
         }
     }
 
     if (!iter->empty_tables) {
-        tables = flecs_id_record_tables(cur);
-        if (iter->index >= flecs_id_record_count(cur)) {
+        if (flecs_idr_iter(idr, &it)) {
+            it.cur = it.begin + iter->index;
+        }
+        if (it.cur >= it.end) {
             return NULL;
         }
     }
 
-    return &tables[iter->index ++];
+    iter->index ++;
+
+    return it.cur;
 }
 
 static
@@ -33478,6 +34925,49 @@ const ecs_filter_t* init_filter_iter(
     return filter;
 }
 
+int32_t ecs_filter_pivot_term(
+    const ecs_world_t *world,
+    const ecs_filter_t *filter)
+{
+    ecs_check(world != NULL, ECS_INVALID_PARAMETER, NULL);
+    ecs_check(filter != NULL, ECS_INVALID_PARAMETER, NULL);
+
+    ecs_term_t *terms = filter->terms;
+    int32_t i, term_count = filter->term_count;
+    int32_t pivot_term = -1, min_count = -1;
+
+    for (i = 0; i < term_count; i ++) {
+        ecs_term_t *term = &terms[i];
+        ecs_id_t id = term->id;
+
+        if (term->oper != EcsAnd) {
+            continue;
+        }
+
+        if (term->subj.entity != EcsThis) {
+            continue;
+        }
+
+        ecs_id_record_t *idr = flecs_get_id_record(world,   
+            actual_match_id(id));
+        if (!idr) {
+            /* If one of the terms does not match with any data, iterator 
+             * should not return anything */
+            return -2; /* -2 indicates filter doesn't match anything */
+        }
+
+        int32_t table_count = ecs_table_cache_count(&idr->cache);
+        if (min_count == -1 || table_count < min_count) {
+            min_count = table_count;
+            pivot_term = i;
+        }
+    }
+
+    return pivot_term;
+error:
+    return -2;
+}
+
 ecs_iter_t ecs_filter_iter(
     const ecs_world_t *stage,
     const ecs_filter_t *filter)
@@ -33485,6 +34975,8 @@ ecs_iter_t ecs_filter_iter(
     ecs_check(stage != NULL, ECS_INVALID_PARAMETER, NULL);
 
     const ecs_world_t *world = ecs_get_world(stage);
+    
+    flecs_process_pending_tables(world);
 
     ecs_iter_t it = {
         .real_world = (ecs_world_t*)world,
@@ -33498,47 +34990,25 @@ ecs_iter_t ecs_filter_iter(
 
     filter = init_filter_iter(world, &it, filter);
 
-    int32_t i, term_count = filter->term_count;
-    ecs_term_t *terms = filter->terms;
-    int32_t min_count = -1;
-    int32_t pivot_term = -1;
-    ecs_check(terms != NULL, ECS_INVALID_PARAMETER, NULL);
-
     /* Find term that represents smallest superset */
     if (filter->match_this) {
+        ecs_term_t *terms = filter->terms;
+        int32_t pivot_term = -1;
+        ecs_check(terms != NULL, ECS_INVALID_PARAMETER, NULL);
+
         iter->kind = EcsIterEvalIndex;
 
-        for (i = 0; i < term_count; i ++) {
-            ecs_term_t *term = &terms[i];
-            ecs_id_t id = term->id;
-
-            if (term->oper != EcsAnd) {
-                continue;
-            }
-
-            if (term->subj.entity != EcsThis) {
-                continue;
-            }
-
-            ecs_id_record_t *idr = flecs_get_id_record(world,   
-                actual_match_id(id));
-            if (!idr) {
-                /* If one of the terms does not match with any data, iterator 
-                 * should not return anything */
-                term_iter_init_no_data(&iter->term_iter);
-                return it;
-            }
-
-            int32_t table_count = flecs_id_record_count(idr);
-            if (min_count == -1 || table_count < min_count) {
-                min_count = table_count;
-                pivot_term = i;
-            }
-        }
-
-        if (pivot_term == -1) {
+        pivot_term = ecs_filter_pivot_term(world, filter);
+        if (pivot_term == -2) {
+            /* One or more terms have no matching results */
+            term_iter_init_no_data(&iter->term_iter);
+            return it;
+        } else if (pivot_term == -1) {
+            /* No terms meet the criteria to be a pivot term, evaluate filter
+             * against all tables */
             term_iter_init_wildcard(world, &iter->term_iter);
         } else {
+            ecs_assert(pivot_term >= 0, ECS_INTERNAL_ERROR, NULL);
             term_iter_init(world, &terms[pivot_term], &iter->term_iter);
         }
 
@@ -33760,17 +35230,15 @@ yield:
 
 static
 int32_t type_search(
-    const ecs_world_t *world,
     const ecs_table_t *table,
-    ecs_id_t id,
+    ecs_id_record_t *idr,
     ecs_id_t *ids,
     ecs_id_t *id_out,
     ecs_table_record_t **tr_out)
-{
-    ecs_assert(id != 0, ECS_INVALID_PARAMETER, NULL);
-    ecs_assert(!ECS_HAS_ROLE(id, CASE), ECS_INVALID_PARAMETER, NULL);
+{    
+    ecs_table_record_t *tr = ecs_table_cache_get(
+        &idr->cache, ecs_table_record_t, table);
 
-    ecs_table_record_t *tr = flecs_get_table_record(world, table, id);
     if (tr) {
         int32_t r = tr->column;
         if (tr_out) tr_out[0] = tr;
@@ -33783,24 +35251,17 @@ int32_t type_search(
 
 static
 int32_t type_offset_search(
-    const ecs_world_t *world,
-    const ecs_table_t *table,
     int32_t offset,
     ecs_id_t id,
     ecs_id_t *ids,
     int32_t count,
-    ecs_id_t *id_out,
-    ecs_table_record_t **tr_out)
+    ecs_id_t *id_out)
 {
     ecs_assert(ids != NULL, ECS_INTERNAL_ERROR, NULL);
     ecs_assert(count > 0, ECS_INTERNAL_ERROR, NULL);
-    ecs_assert(offset >= 0, ECS_INTERNAL_ERROR, NULL);
+    ecs_assert(offset > 0, ECS_INTERNAL_ERROR, NULL);
     ecs_assert(id != 0, ECS_INVALID_PARAMETER, NULL);
     ecs_assert(!ECS_HAS_ROLE(id, CASE), ECS_INVALID_PARAMETER, NULL);
-
-    if (!offset) {
-        return type_search(world, table, id, ids, id_out, tr_out);
-    }
 
     while (offset < count) {
         ecs_id_t type_id = ids[offset ++];
@@ -33814,12 +35275,36 @@ int32_t type_offset_search(
 }
 
 static
+bool type_can_inherit_id(
+    const ecs_world_t *world,
+    const ecs_table_t *table,
+    const ecs_id_record_t *idr,
+    ecs_id_t id)
+{
+    if (idr->flags & ECS_ID_DONT_INHERIT) {
+        return false;
+    }
+    if (idr->flags & ECS_ID_EXCLUSIVE) {
+        if (ECS_HAS_ROLE(id, PAIR)) {
+            ecs_entity_t er = ECS_PAIR_RELATION(id);
+            if (flecs_get_table_record(
+                world, table, ecs_pair(er, EcsWildcard))) 
+            {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+static
 int32_t type_search_relation(
     const ecs_world_t *world,
     const ecs_table_t *table,
-    int32_t offset,
     ecs_id_t id,
-    uint32_t rel,
+    ecs_id_record_t *idr,
+    ecs_id_t rel,
+    ecs_id_record_t *idr_r,
     int32_t min_depth,
     int32_t max_depth,
     ecs_entity_t *subject_out,
@@ -33831,69 +35316,68 @@ int32_t type_search_relation(
     int32_t count = ecs_vector_count(type);
 
     if (min_depth <= 0) {
-        int32_t r = type_offset_search(world, table, offset, id, ids, count, 
-            id_out, tr_out);
+        int32_t r = type_search(table, idr, ids, id_out, tr_out);
         if (r != -1) {
             return r;
         }
     }
 
     ecs_flags32_t flags = table->flags;
-    if ((flags & EcsTableHasPairs) && max_depth && rel && id != EcsPrefab && 
-        id != EcsDisabled && ECS_PAIR_RELATION(id) != ecs_id(EcsIdentifier) &&
-        ECS_PAIR_RELATION(id) != EcsChildOf)
-    {
-        bool is_a = rel == EcsIsA;
-        if (is_a && !(flags & EcsTableHasIsA)) {
-            return -1;
+    if ((flags & EcsTableHasPairs) && max_depth && rel) {
+        bool is_a = rel == ecs_pair(EcsIsA, EcsWildcard);
+        if (is_a) {
+            if (!(flags & EcsTableHasIsA)) {
+                return -1;
+            }
+            if (!type_can_inherit_id(world, table, idr, id)) {
+                return -1;
+            }
+            idr_r = world->idr_isa_wildcard;
         }
 
-        int32_t i, r;
-        for (i = 0; i < count; i ++) {
-            ecs_id_t tid = ids[i];
-            if (ECS_PAIR_RELATION(tid) == rel) {
-                do {
-                    ecs_entity_t obj = ECS_PAIR_OBJECT(tid);
-                    ecs_assert(obj != 0, ECS_INTERNAL_ERROR, NULL);
-
-                    ecs_record_t *rec = ecs_eis_get_any(world, obj);
-                    ecs_assert(rec != NULL, ECS_INTERNAL_ERROR, NULL);
-
-                    ecs_table_t *obj_table = rec->table;
-                    if (obj_table) {
-                        r = type_search_relation(world, obj_table, 0, id, rel, 
-                            min_depth - 1, max_depth - 1, subject_out, id_out,
-                            tr_out);
-                        if (r != -1) {
-                            if (subject_out && !subject_out[0]) {
-                                subject_out[0] = ecs_get_alive(world, obj);
-                            }
-                            return r;
-                        }
-
-                        if (!is_a) {
-                            r = type_search_relation(world, obj_table, 0, id,
-                                (uint32_t)EcsIsA, 1, INT_MAX, subject_out, id_out, 
-                                tr_out);
-                            if (r != -1) {
-                                if (subject_out && !subject_out[0]) {
-                                    subject_out[0] = ecs_get_alive(world, obj);
-                                }
-                                return r;
-                            }
-                        }
-                    }
-
-                    i ++;
-                    if (i >= count) {
-                        break;
-                    }
-
-                    tid = ids[i];
-                } while (ECS_PAIR_RELATION(tid) == rel);
-
-                break;
+        if (!idr_r) {
+            idr_r = flecs_get_id_record(world, rel);
+            if (!idr_r) {
+                return -1;
             }
+        }
+
+        ecs_id_t id_r;
+        ecs_table_record_t *tr_r;
+        int32_t r, r_column = type_search(table, idr_r, ids, &id_r, &tr_r);
+        while (r_column != -1) {
+            ecs_entity_t obj = ECS_PAIR_OBJECT(id_r);
+            ecs_assert(obj != 0, ECS_INTERNAL_ERROR, NULL);
+
+            ecs_record_t *rec = ecs_eis_get_any(world, obj);
+            ecs_assert(rec != NULL, ECS_INTERNAL_ERROR, NULL);
+
+            ecs_table_t *obj_table = rec->table;
+            if (obj_table) {
+                r = type_search_relation(world, obj_table, id, idr, 
+                    rel, idr_r, min_depth - 1, max_depth - 1, subject_out, 
+                    id_out, tr_out);
+                if (r != -1) {
+                    if (subject_out && !subject_out[0]) {
+                        subject_out[0] = ecs_get_alive(world, obj);
+                    }
+                    return r;
+                }
+
+                if (!is_a) {
+                    r = type_search_relation(world, obj_table, id, idr, 
+                        ecs_pair(EcsIsA, EcsWildcard), world->idr_isa_wildcard, 
+                            1, INT_MAX, subject_out, id_out, tr_out);
+                    if (r != -1) {
+                        if (subject_out && !subject_out[0]) {
+                            subject_out[0] = ecs_get_alive(world, obj);
+                        }
+                        return r;
+                    }
+                }
+            }
+
+            r_column = type_offset_search(r_column + 1, rel, ids, count, &id_r);
         }
     }
 
@@ -33917,13 +35401,32 @@ int32_t ecs_search_relation(
     ecs_poly_assert(world, ecs_world_t);
     ecs_assert(id != 0, ECS_INVALID_PARAMETER, NULL);
 
-    max_depth = INT_MAX * !max_depth + max_depth * !!max_depth;
-
     bool is_case = ECS_HAS_ROLE(id, CASE);
     id = is_case * (ECS_SWITCH | ECS_PAIR_RELATION(id)) + !is_case * id;
     
-    return type_search_relation(world, table, offset, id, (uint32_t)rel, 
-        min_depth, max_depth, subject_out, id_out, tr_out);
+    if (offset && !min_depth) {
+        ecs_type_t type = table->type;
+        ecs_id_t *ids = ecs_vector_first(type, ecs_id_t);
+        int32_t count = ecs_vector_count(type);
+        return type_offset_search(offset, id, ids, count, id_out);
+    }
+
+    ecs_id_record_t *idr = flecs_get_id_record(world, id);
+    if (!idr) {
+        return -1;
+    }
+
+    max_depth = INT_MAX * !max_depth + max_depth * !!max_depth;
+
+    int32_t result = type_search_relation(world, table, id, idr, 
+        ecs_pair(rel, EcsWildcard), NULL, min_depth, max_depth, subject_out, 
+            id_out, tr_out);
+
+    /* Searching for a relation at an offset for a relation isn't suppported at
+     * the moment, if an offset is provided make sure it matches the returned
+     * column index */
+    ecs_assert(!offset || result == offset, ECS_INVALID_PARAMETER, NULL);
+    return result;
 }
 
 int32_t ecs_search(
@@ -33937,9 +35440,14 @@ int32_t ecs_search(
     ecs_poly_assert(world, ecs_world_t);
     ecs_assert(id != 0, ECS_INVALID_PARAMETER, NULL);
 
+    ecs_id_record_t *idr = flecs_get_id_record(world, id);
+    if (!idr) {
+        return -1;
+    }
+
     ecs_type_t type = table->type;
     ecs_id_t *ids = ecs_vector_first(type, ecs_id_t);
-    return type_search(world, table, id, ids, id_out, NULL);
+    return type_search(table, idr, ids, id_out, NULL);
 }
 
 int32_t ecs_search_offset(
@@ -33949,13 +35457,18 @@ int32_t ecs_search_offset(
     ecs_id_t id,
     ecs_id_t *id_out)
 {
+    if (!offset) {
+        return ecs_search(world, table, id, id_out);
+    }
+
     if (!table) return -1;
 
     ecs_poly_assert(world, ecs_world_t);
-    ecs_assert(table != NULL, ECS_INTERNAL_ERROR, NULL);
 
-    return type_search_relation(world, table, offset, id, 0, 
-        0, 0, 0, id_out, NULL);
+    ecs_type_t type = table->type;
+    ecs_id_t *ids = ecs_vector_first(type, ecs_id_t);
+    int32_t count = ecs_vector_count(type);
+    return type_offset_search(offset, id, ids, count, id_out);
 }
 
 
@@ -33999,6 +35512,9 @@ void observer_callback(ecs_iter_t *it) {
     if (!prev_table) {
         prev_table = &world->store.root;
     }
+
+    static int obs_count = 0;
+    obs_count ++;
 
     /* Populate the column for the term that triggered. This will allow the
      * matching algorithm to pick the right column in case the term is a
@@ -34051,6 +35567,47 @@ done:
     ecs_iter_fini(&user_it);
 }
 
+static
+void observer_yield_existing(
+    ecs_world_t *world,
+    ecs_observer_t *observer)
+{
+    ecs_run_action_t callback = observer->run;
+
+    int32_t pivot_term = ecs_filter_pivot_term(world, &observer->filter);
+    if (pivot_term < 0) {
+        return;
+    }
+
+    /* If yield existing is enabled, trigger for each thing that matches
+     * the event, if the event is iterable. */
+    int i, count = observer->event_count;
+    for (i = 0; i < count; i ++) {
+        ecs_entity_t evt = observer->events[i];
+        const EcsIterable *iterable = ecs_get(world, evt, EcsIterable);
+        if (!iterable) {
+            continue;
+        }
+
+        ecs_iter_t it;
+        iterable->init(world, world, &it, &observer->filter.terms[pivot_term]);
+        it.terms = observer->filter.terms;
+        it.term_count = observer->filter.term_count;
+        it.term_index = pivot_term;
+        it.system = observer->entity;
+        it.ctx = observer;
+        it.binding_ctx = observer->binding_ctx;
+        it.event = evt;
+
+        ecs_iter_next_action_t next = it.next;
+        ecs_assert(next != NULL, ECS_INTERNAL_ERROR, NULL);
+        while (next(&it)) {
+            callback(&it);
+            world->event_id ++;
+        }
+    }
+}
+
 ecs_entity_t ecs_observer_init(
     ecs_world_t *world,
     const ecs_observer_desc_t *desc)
@@ -34060,7 +35617,8 @@ ecs_entity_t ecs_observer_init(
     ecs_check(desc != NULL, ECS_INVALID_PARAMETER, NULL);
     ecs_check(desc->_canary == 0, ECS_INVALID_PARAMETER, NULL);
     ecs_check(!world->is_fini, ECS_INVALID_OPERATION, NULL);
-    ecs_check(desc->callback != NULL, ECS_INVALID_OPERATION, NULL);
+    ecs_check(desc->callback != NULL || desc->run != NULL, 
+        ECS_INVALID_OPERATION, NULL);
 
     /* If entity is provided, create it */
     ecs_entity_t existing = desc->entity.entity;
@@ -34120,9 +35678,24 @@ ecs_entity_t ecs_observer_init(
         /* Observer must have at least one event */
         ecs_check(observer->event_count != 0, ECS_INVALID_PARAMETER, NULL);
 
+        ecs_run_action_t run = desc->run;
+        if (!run) {
+            run = observer_callback;
+        }
+
+        observer->action = desc->callback;
+        observer->run = run;
+        observer->self = desc->self;
+        observer->ctx = desc->ctx;
+        observer->binding_ctx = desc->binding_ctx;
+        observer->ctx_free = desc->ctx_free;
+        observer->binding_ctx_free = desc->binding_ctx_free;
+        observer->entity = entity;
+        comp->observer = observer;
+
         /* Create a trigger for each term in the filter */
         ecs_trigger_desc_t tdesc = {
-            .callback = observer_callback,
+            .callback = run,
             .ctx = observer,
             .binding_ctx = desc->binding_ctx,
             .match_prefab = observer->filter.match_prefab,
@@ -34167,18 +35740,13 @@ ecs_entity_t ecs_observer_init(
             }
         }
 
-        observer->action = desc->callback;
-        observer->self = desc->self;
-        observer->ctx = desc->ctx;
-        observer->binding_ctx = desc->binding_ctx;
-        observer->ctx_free = desc->ctx_free;
-        observer->binding_ctx_free = desc->binding_ctx_free;
-        observer->entity = entity;
-        comp->observer = observer;
-
         if (desc->entity.name) {
             ecs_trace("#[green]observer#[reset] %s created", 
                 ecs_get_name(world, entity));
+        }
+
+        if (desc->yield_existing) {
+            observer_yield_existing(world, observer);
         }
     } else {
         ecs_assert(comp->observer != NULL, ECS_INTERNAL_ERROR, NULL);
@@ -34390,6 +35958,17 @@ void free_payload(
     ecs_vector_free(tables);
 }
 
+static
+void free_empty(
+    ecs_table_cache_t *cache)
+{
+    ecs_assert(cache != NULL, ECS_INTERNAL_ERROR, NULL);
+    ecs_assert(ecs_map_count(cache->index) <= 1, ECS_INTERNAL_ERROR, NULL);
+    ecs_map_free(cache->index);
+    ecs_vector_free(cache->tables);
+    ecs_vector_free(cache->empty_tables);
+}
+
 void ecs_table_cache_fini(
     ecs_table_cache_t *cache)
 {
@@ -34446,47 +36025,26 @@ void* _ecs_table_cache_insert(
     return result;
 }
 
-void _ecs_table_cache_remove(
-    ecs_table_cache_t *cache,
+static
+void* table_cache_get_w_index(
+    const ecs_table_cache_t *cache,
     ecs_size_t size,
-    const ecs_table_t *table)
+    const ecs_table_t *table,
+    int32_t index)
 {
-    ecs_assert(cache != NULL, ECS_INTERNAL_ERROR, NULL);
-    ecs_assert(table != NULL, ECS_INTERNAL_ERROR, NULL);
-    ecs_assert(size == cache->size, ECS_INTERNAL_ERROR, NULL);
-    (void)size;
-
-    int32_t *index = ecs_map_get(cache->index, int32_t, table->id);
-    if (!index) {
-        return;
-    }
-
-    if (cache->free_payload) {
-        ecs_table_cache_hdr_t *elem = _ecs_table_cache_get(
-            cache, cache->size, table);
-        ecs_assert(elem != NULL, ECS_INTERNAL_ERROR, NULL);
-        cache->free_payload(cache->parent, elem);
-    }
-
-    if (index[0] < 0) {
-        move_table(cache, table, index[0], NULL, cache->empty_tables, false);
+    (void)table;
+    
+    ecs_table_cache_hdr_t *result;
+    if (index >= 0) {
+        result = ecs_vector_get_t(cache->tables, size, 8, index);
     } else {
-        move_table(cache, table, index[0], NULL, cache->tables, true);
+        result = ecs_vector_get_t(
+            cache->empty_tables, size, 8, index * -1 - 1);
     }
 
-    ecs_map_remove(cache->index, table->id);
+    ecs_assert(!result || result->table == table, ECS_INTERNAL_ERROR, NULL);
 
-    if (!ecs_map_count(cache->index)) {
-        ecs_assert(ecs_vector_count(cache->tables) == 0, 
-            ECS_INTERNAL_ERROR, NULL);
-        ecs_assert(ecs_vector_count(cache->empty_tables) == 0,
-            ECS_INTERNAL_ERROR, NULL);
-        ecs_table_cache_fini(cache);
-
-        cache->index = NULL;
-        cache->tables = NULL;
-        cache->empty_tables = NULL;
-    }
+    return result;
 }
 
 void* _ecs_table_cache_get(
@@ -34503,20 +36061,60 @@ void* _ecs_table_cache_get(
         return NULL;
     }
 
-    ecs_table_cache_hdr_t *result;
-    if (index[0] >= 0) {
-        result = ecs_vector_get_t(cache->tables, size, 8, index[0]);
-    } else {
-        result = ecs_vector_get_t(
-            cache->empty_tables, size, 8, index[0] * -1 - 1);
-    }
-
-    ecs_assert(!result || result->table == table, ECS_INTERNAL_ERROR, NULL);
-
-    return result;
+    return table_cache_get_w_index(cache, size, table, index[0]);
 }
 
-void ecs_table_cache_set_empty(
+bool _ecs_table_cache_remove(
+    ecs_table_cache_t *cache,
+    ecs_size_t size,
+    const ecs_table_t *table)
+{
+    ecs_assert(cache != NULL, ECS_INTERNAL_ERROR, NULL);
+    ecs_assert(table != NULL, ECS_INTERNAL_ERROR, NULL);
+    ecs_assert(size == cache->size, ECS_INTERNAL_ERROR, NULL);
+    (void)size;
+
+    int32_t *index_ptr = ecs_map_get(cache->index, int32_t, table->id);
+    if (!index_ptr) {
+        return false;
+    }
+
+    int32_t index = index_ptr[0];
+
+    if (cache->free_payload) {
+        ecs_table_cache_hdr_t *elem = table_cache_get_w_index(
+            cache, cache->size, table, index);
+        ecs_assert(elem != NULL, ECS_INTERNAL_ERROR, NULL);
+        cache->free_payload(cache->parent, elem);
+    }
+
+    if (ecs_map_count(cache->index) > 1) {
+        if (index < 0) {
+            move_table(cache, table, index, NULL, cache->empty_tables, false);
+        } else {
+            move_table(cache, table, index, NULL, cache->tables, true);
+        }
+
+        ecs_map_remove(cache->index, table->id);
+
+        return false;
+    }
+    
+    ecs_assert(ecs_vector_count(cache->tables) <= 1, 
+        ECS_INTERNAL_ERROR, NULL);
+    ecs_assert(ecs_vector_count(cache->empty_tables) <= 1,
+        ECS_INTERNAL_ERROR, NULL);
+    
+    free_empty(cache);
+
+    cache->index = NULL;
+    cache->tables = NULL;
+    cache->empty_tables = NULL;
+
+    return true;
+}
+
+bool ecs_table_cache_set_empty(
     ecs_table_cache_t *cache,
     const ecs_table_t *table,
     bool empty)
@@ -34526,14 +36124,14 @@ void ecs_table_cache_set_empty(
 
     int32_t *index = ecs_map_get(cache->index, int32_t, table->id);
     if (!index) {
-        return;
+        return false;
     }
 
     /* If table is already in the correct array nothing needs to be done */
     if (empty && index[0] < 0) {
-        return;
+        return false;
     } else if (!empty && index[0] >= 0) {
-        return;
+        return false;
     }
 
     if (index[0] < 0) {
@@ -34543,6 +36141,8 @@ void ecs_table_cache_set_empty(
         index[0] = move_table(
             cache, table, index[0], &cache->empty_tables, cache->tables, empty);
     }
+
+    return true;
 }
 
 void* _ecs_table_cache_tables(
@@ -34583,15 +36183,6 @@ int32_t ecs_table_cache_empty_count(
     return ecs_vector_count(cache->empty_tables);
 }
 
-bool ecs_table_cache_is_empty(
-    const ecs_table_cache_t *cache)
-{
-    if (!cache) {
-        return true;
-    }
-    return ecs_map_count(cache->index) == 0;
-}
-
 void _ecs_table_cache_fini_delete_all(
     ecs_world_t *world,
     ecs_table_cache_t *cache,
@@ -34626,10 +36217,13 @@ void _ecs_table_cache_fini_delete_all(
     ecs_table_cache_fini(cache);
 }
 
+#include <stdio.h>
+#include <ctype.h>
 
 void ecs_os_api_impl(ecs_os_api_t *api);
 
 static bool ecs_os_api_initialized = false;
+static bool ecs_os_api_initializing = false;
 static int ecs_os_api_init_count = 0;
 
 #ifndef __EMSCRIPTEN__
@@ -34679,7 +36273,7 @@ void ecs_os_fini(void) {
     }
 }
 
-#if !defined(_MSC_VER) && !defined(__EMSCRIPTEN__) && !defined(__ANDROID__) && !defined(_WIN32)
+#if !defined(ECS_TARGET_WINDOWS) && !defined(ECS_TARGET_EM) && !defined(ECS_TARGET_ANDROID)
 #include <execinfo.h>
 #define ECS_BT_BUF_SIZE 100
 static
@@ -34843,9 +36437,10 @@ void ecs_os_fatal(
 }
 
 static
-void ecs_os_gettime(ecs_time_t *time)
-{
-    uint64_t now = flecs_os_time_now();
+void ecs_os_gettime(ecs_time_t *time) {
+    ecs_assert(ecs_os_has_time() == true, ECS_MISSING_OS_API, NULL);
+    
+    uint64_t now = ecs_os_now();
     uint64_t sec = now / 1000000000;
 
     assert(sec < UINT32_MAX);
@@ -34925,18 +36520,18 @@ char* ecs_os_api_module_to_dl(const char *module) {
     /* Best guess, use module name with underscores + OS library extension */
     char *file_base = module_file_base(module, '_');
 
-#if defined(ECS_OS_LINUX)
+#   if defined(ECS_TARGET_LINUX) || defined(ECS_TARGET_FREEBSD)
     ecs_strbuf_appendstr(&lib, "lib");
     ecs_strbuf_appendstr(&lib, file_base);
     ecs_strbuf_appendstr(&lib, ".so");
-#elif defined(ECS_OS_DARWIN)
+#   elif defined(ECS_TARGET_DARWIN)
     ecs_strbuf_appendstr(&lib, "lib");
     ecs_strbuf_appendstr(&lib, file_base);
     ecs_strbuf_appendstr(&lib, ".dylib");
-#elif defined(ECS_OS_WINDOWS)
+#   elif defined(ECS_TARGET_WINDOWS)
     ecs_strbuf_appendstr(&lib, file_base);
     ecs_strbuf_appendstr(&lib, ".dll");
-#endif
+#   endif
 
     ecs_os_free(file_base);
 
@@ -34965,7 +36560,11 @@ void ecs_os_set_api_defaults(void)
         return;
     }
 
-    flecs_os_time_setup();
+    if (ecs_os_api_initializing != 0) {
+        return;
+    }
+
+    ecs_os_api_initializing = true;
     
     /* Memory management */
     ecs_os_api.malloc_ = ecs_os_api_malloc;
@@ -34977,7 +36576,6 @@ void ecs_os_set_api_defaults(void)
     ecs_os_api.strdup_ = ecs_os_api_strdup;
 
     /* Time */
-    ecs_os_api.sleep_ = flecs_os_time_sleep;
     ecs_os_api.get_time_ = ecs_os_gettime;
 
     /* Logging */
@@ -34993,6 +36591,15 @@ void ecs_os_set_api_defaults(void)
     }
 
     ecs_os_api.abort_ = abort;
+
+#   ifdef FLECS_OS_API_IMPL
+    /* Initialize defaults to OS API IMPL addon, but still allow for overriding
+     * by the application */
+    ecs_set_os_api_impl();
+    ecs_os_api_initialized = false;
+#   endif
+
+    ecs_os_api_initializing = false;
 }
 
 bool ecs_os_has_heap(void) {
@@ -35021,7 +36628,9 @@ bool ecs_os_has_threading(void) {
 bool ecs_os_has_time(void) {
     return 
         (ecs_os_api.get_time_ != NULL) &&
-        (ecs_os_api.sleep_ != NULL);
+        (ecs_os_api.sleep_ != NULL) &&
+        (ecs_os_api.now_ != NULL) &&
+        (ecs_os_api.enable_high_timer_resolution_ != NULL);
 }
 
 bool ecs_os_has_logging(void) {
@@ -35041,17 +36650,26 @@ bool ecs_os_has_modules(void) {
         (ecs_os_api.module_to_etc_ != NULL);
 }
 
-#if defined(_MSC_VER)
+void ecs_os_enable_high_timer_resolution(bool enable) {
+    if (ecs_os_api.enable_high_timer_resolution_) {
+        ecs_os_api.enable_high_timer_resolution_(enable);
+    } else {
+        ecs_assert(enable == false, ECS_MISSING_OS_API, 
+            "enable_high_timer_resolution");
+    }
+}
+
+#if defined(ECS_TARGET_WINDOWS)
 static char error_str[255];
 #endif
 
 const char* ecs_os_strerror(int err) {
-#if defined(_MSC_VER)
+#   if defined(ECS_TARGET_WINDOWS)
     strerror_s(error_str, 255, err);
     return error_str;
-#else
+#   else
     return strerror(err);
-#endif
+#   endif
 }
 
 
@@ -36572,6 +38190,7 @@ void build_sorted_table_range(
     }
 
     int to_sort = 0;
+
     sort_helper_t *helper = ecs_os_malloc_n(sort_helper_t, list->count);
     ecs_query_table_node_t *cur, *end = list->last->next;
     for (cur = list->first; cur != end; cur = cur->next) {
@@ -36579,6 +38198,7 @@ void build_sorted_table_range(
         ecs_table_t *table = match->table;
         ecs_data_t *data = &table->storage;
         ecs_vector_t *entities;
+
         if (!(entities = data->entities) || !ecs_table_count(table)) {
             continue;
         }
@@ -36623,6 +38243,8 @@ void build_sorted_table_range(
         helper[to_sort].count = ecs_table_count(table);
         to_sort ++;      
     }
+
+    ecs_assert(to_sort != 0, ECS_INTERNAL_ERROR, NULL);
 
     bool proceed;
     do {
@@ -36888,6 +38510,19 @@ void register_monitors(
 }
 
 static
+bool is_term_id_supported(
+    ecs_term_id_t *term_id)
+{
+    if (term_id->var != EcsVarIsVariable) {
+        return true;
+    }
+    if (term_id->entity == EcsWildcard) {
+        return true;
+    }
+    return false;
+}
+
+static
 void process_signature(
     ecs_world_t *world,
     ecs_query_t *query)
@@ -36903,15 +38538,20 @@ void process_signature(
         ecs_oper_kind_t op = term->oper; 
         ecs_inout_kind_t inout = term->inout;
 
+        bool is_pred_supported = is_term_id_supported(pred);
+        bool is_subj_supported = is_term_id_supported(subj);
+        bool is_obj_supported = is_term_id_supported(obj);
+
         (void)pred;
         (void)obj;
+        (void)is_pred_supported;
+        (void)is_subj_supported;
+        (void)is_obj_supported;
 
-        /* Queries do not support variables */
-        ecs_check(pred->var != EcsVarIsVariable, 
-            ECS_UNSUPPORTED, NULL);
-        ecs_check(subj->entity == EcsThis || subj->var != EcsVarIsVariable, 
-            ECS_UNSUPPORTED, NULL);
-        ecs_check(obj->var != EcsVarIsVariable, 
+        /* Queries do not support named variables */
+        ecs_check(is_pred_supported, ECS_UNSUPPORTED, NULL);
+        ecs_check(is_obj_supported,  ECS_UNSUPPORTED, NULL);
+        ecs_check(is_subj_supported || subj->entity == EcsThis, 
             ECS_UNSUPPORTED, NULL);
 
         /* If self is not included in set, always start from depth 1 */
@@ -37427,18 +39067,35 @@ static
 void query_on_event(
     ecs_iter_t *it) 
 { 
-    ecs_query_t *query = it->ctx;
-    ecs_entity_t event = it->event;
+    /* Because this is the observer::run callback, checking if this is event is
+     * already handled is not done for us. */
+    ecs_world_t *world = it->world;
+    ecs_observer_t *o = it->ctx;
+    if (o->last_event_id == world->event_id) {
+        return;
+    }
+    o->last_event_id = world->event_id;
 
+    ecs_query_t *query = o->ctx;
+    ecs_table_t *table = it->table;
+
+    ecs_assert(query != NULL, ECS_INTERNAL_ERROR, NULL);
+
+    /* The observer isn't doing the matching because the query can do it more
+     * efficiently by checking the table with the query cache. */
+    if (ecs_table_cache_get(&query->cache, ecs_query_table_t, table) == NULL) {
+        return;
+    }
+
+    ecs_entity_t event = it->event;
     if (event == EcsOnTableEmpty) {
-        // printf("%p: table %p: empty\n");
-        update_table(query, it->table, true);
+        update_table(query, table, true);
     } else
     if (event == EcsOnTableFill) {
-        // printf("%p: table %p: fill\n");
-        update_table(query, it->table, false);
+        update_table(query, table, false);
     }
 }
+
 
 /* -- Public API -- */
 
@@ -37459,16 +39116,26 @@ ecs_query_t* ecs_query_init(
     ecs_observer_desc_t observer_desc = { .filter = desc->filter };
     observer_desc.filter.match_empty_tables = true;
 
+    ecs_table_cache_init(
+        &result->cache, ecs_query_table_t, result, remove_table);
+
     if (ecs_filter_init(world, &result->filter, &observer_desc.filter)) {
         goto error;
     }
 
     if (result->filter.term_count) {
-        observer_desc.callback = query_on_event;
+        observer_desc.run = query_on_event;
         observer_desc.ctx = result;
         observer_desc.events[0] = EcsOnTableEmpty;
         observer_desc.events[1] = EcsOnTableFill;
         observer_desc.filter.filter = true;
+
+        /* ecs_filter_init could have moved away resources from the terms array
+         * in the descriptor, so use the terms array from the filter. */
+        observer_desc.filter.terms_buffer = result->filter.terms;
+        observer_desc.filter.terms_buffer_count = result->filter.term_count;
+        observer_desc.filter.expr = NULL; /* Already parsed */
+
         result->observer = ecs_observer_init(world, &observer_desc);
         if (!result->observer) {
             goto error;
@@ -37479,9 +39146,6 @@ ecs_query_t* ecs_query_init(
     result->iterable.init = query_iter_init;
     result->system = desc->system;
     result->prev_match_count = -1;
-
-    ecs_table_cache_init(
-        &result->cache, ecs_query_table_t, result, remove_table);
 
     process_signature(world, result);
 
@@ -37621,6 +39285,8 @@ ecs_iter_t ecs_query_iter(
         ECS_INVALID_PARAMETER, NULL);
 
     ecs_world_t *world = (ecs_world_t*)ecs_get_world(stage);
+
+    flecs_process_pending_tables(world);
 
     sort_tables(world, query);
 
@@ -37958,7 +39624,7 @@ int bitset_column_next(
                 cur_last = last;
             }
         }
-        
+
         last = cur_last;
         int32_t elem_count = last - first;
 
@@ -38104,6 +39770,7 @@ bool ecs_query_next_instanced(
                             &cur) == -1) 
                         {
                             /* No more enabled components for table */
+                            iter->bitset_first = 0;
                             break;
                         } else {
                             found = true;
@@ -38122,6 +39789,7 @@ bool ecs_query_next_instanced(
                                 found = false;
                             } else {
                                 /* Nothing found */
+                                iter->bitset_first = 0;
                                 break;
                             }
                         } else {
@@ -38168,7 +39836,7 @@ yield:
 
 bool ecs_query_changed(
     ecs_query_t *query,
-    ecs_iter_t *it)
+    const ecs_iter_t *it)
 {
     if (it) {
         ecs_assert(it->next == ecs_query_next, ECS_INVALID_PARAMETER, NULL);
@@ -38186,12 +39854,16 @@ bool ecs_query_changed(
         ecs_assert(query != NULL, ECS_INVALID_PARAMETER, NULL);
         ecs_poly_assert(query, ecs_query_t);
 
+        flecs_process_pending_tables(it->real_world);
+
         return check_match_monitor(query, qt);
     }
 
     ecs_poly_assert(query, ecs_query_t);
     ecs_check(!(query->flags & EcsQueryIsOrphaned), 
         ECS_INVALID_PARAMETER, NULL);
+
+    flecs_process_pending_tables(query->world);
 
     if (!(query->flags & EcsQueryHasMonitor)) {
         query->flags |= EcsQueryHasMonitor;
@@ -38314,27 +39986,15 @@ int32_t ensure_columns(
     ecs_id_t* ids = ecs_vector_first(table->type, ecs_id_t);
 
     for (i = 0; i < count; i++) {
-        ecs_id_t id = ids[i];
-
-        if (ECS_HAS_ROLE(id, PAIR)) {
-            ecs_entity_t rel = ECS_PAIR_RELATION(id);
-            ecs_entity_t obj = ECS_PAIR_OBJECT(id);
-            ecs_ensure(world, rel);
-            ecs_ensure(world, obj);
-        } else if (id & ECS_ROLE_MASK) {
-            ecs_entity_t e = ECS_PAIR_OBJECT(id);
-            ecs_ensure(world, e);
-        } else {
-            ecs_ensure(world, id);
-        }
+        ecs_ensure_id(world, ids[i]);
     }
 
     return count;
 }
 
 static
-ecs_type_t ids_to_type(
-    ecs_ids_t *entities)
+ecs_vector_t* ids_to_vector(
+    const ecs_ids_t *entities)
 {
     if (entities->count) {
         ecs_vector_t *result = NULL;
@@ -38449,6 +40109,11 @@ void init_flags(
             table->flags |= EcsTableHasIsA;
         }
 
+        /* Does table have ChildOf relations */
+        if (ECS_HAS_RELATION(id, EcsChildOf)) {
+            table->flags |= EcsTableHasChildOf;
+        }
+
         /* Does table have switch columns */
         if (ECS_HAS_ROLE(id, SWITCH)) {
             table->flags |= EcsTableHasSwitch;
@@ -38463,6 +40128,7 @@ void init_flags(
         if (ECS_HAS_RELATION(id, EcsChildOf)) {
             ecs_poly_assert(world, ecs_world_t);
             ecs_entity_t obj = ecs_pair_object(world, id);
+            ecs_assert(obj != 0, ECS_INTERNAL_ERROR, NULL);
 
             if (obj == EcsFlecs || obj == EcsFlecsCore || 
                 ecs_has_id(world, obj, EcsModule)) 
@@ -38479,15 +40145,14 @@ void init_flags(
 static
 void init_table(
     ecs_world_t *world,
-    ecs_table_t *table,
-    ecs_ids_t *entities)
+    ecs_table_t *table)
 {
-    table->type = ids_to_type(entities);
     table->c_info = NULL;
     table->flags = 0;
     table->dirty_state = NULL;
     table->alloc_count = 0;
     table->lock = 0;
+    table->refcount = 1;
 
     /* Ensure the component ids for the table exist */
     ensure_columns(world, table);
@@ -38507,14 +40172,18 @@ void init_table(
 static
 ecs_table_t *create_table(
     ecs_world_t *world,
-    ecs_ids_t *entities,
+    ecs_vector_t *type,
     flecs_hashmap_result_t table_elem)
 {
     ecs_table_t *result = flecs_sparse_add(world->store.tables, ecs_table_t);
     ecs_assert(result != NULL, ECS_INTERNAL_ERROR, NULL);
-    result->id = flecs_sparse_last_id(world->store.tables);
 
-    init_table(world, result, entities);
+    ecs_vector_reclaim(&type, ecs_id_t);
+
+    result->id = flecs_sparse_last_id(world->store.tables);
+    result->type = type;
+
+    init_table(world, result);
 
 #ifndef NDEBUG
     char *expr = ecs_type_str(world, result->type);
@@ -38544,63 +40213,103 @@ ecs_table_t *create_table(
 }
 
 static
+ecs_table_t* find_or_create(
+    ecs_world_t *world,
+    const ecs_ids_t *ids,
+    ecs_vector_t *type)
+{    
+    ecs_poly_assert(world, ecs_world_t);   
+
+    /* Make sure array is ordered and does not contain duplicates */
+    int32_t id_count = ids->count;
+
+    if (!id_count) {
+        return &world->store.root;
+    }
+
+    ecs_table_t *table;
+    flecs_hashmap_result_t elem = flecs_hashmap_ensure(
+        world->store.table_map, ids, ecs_table_t*);
+    if ((table = *(ecs_table_t**)elem.value)) {
+        if (type) {
+            ecs_vector_free(type);
+        }
+        return table;
+    }
+
+    if (!type) {
+        type = ids_to_vector(ids);
+    }
+
+    /* If we get here, table needs to be created which is only allowed when the
+     * application is not currently in progress */
+    ecs_assert(!world->is_readonly, ECS_INTERNAL_ERROR, NULL);
+
+    /* If we get here, the table has not been found, so create it. */
+    return create_table(world, type, elem);
+}
+
+static
 void add_id_to_ids(
-    ecs_type_t type,
+    ecs_vector_t **idv,
     ecs_entity_t add,
-    ecs_ids_t *out,
     ecs_entity_t r_exclusive)
 {
-    int32_t count = ecs_vector_count(type);
-    ecs_id_t *array = ecs_vector_first(type, ecs_id_t);    
-    bool added = false;
+    int32_t i, count = ecs_vector_count(idv[0]);
+    ecs_id_t *array = ecs_vector_first(idv[0], ecs_id_t);
 
-    int32_t i, el = 0;
     for (i = 0; i < count; i ++) {
         ecs_id_t e = array[i];
 
-        if (!added) {
-            if (r_exclusive && ECS_HAS_ROLE(e, PAIR)) {
-                if (ECS_PAIR_RELATION(e) == r_exclusive) {
-                    out->array[el ++] = add;
-                    added = true;
-                    continue; /* don't add original element */
-                }
-            }
+        if (e == add) {
+            return;
+        }
 
-            if (e >= add) {
-                if (e != add) {
-                    out->array[el ++] = add;
-                }
-                added = true;
+        if (r_exclusive && ECS_HAS_ROLE(e, PAIR)) {
+            if (ECS_PAIR_RELATION(e) == r_exclusive) {
+                array[i] = add; /* Replace */
+                return;
             }
         }
 
-        out->array[el ++] = e;
-        ecs_assert(el <= out->count, ECS_INTERNAL_ERROR, NULL);
+        if (e >= add) {
+            if (e != add) {
+                ecs_id_t *ptr = ecs_vector_insert_at(idv, ecs_id_t, i);
+                ptr[0] = add;
+                return;
+            }
+        }
     }
 
-    if (!added) {
-        out->array[el ++] = add;
-    }
-
-    out->count = el;
+    ecs_id_t *ptr = ecs_vector_add(idv, ecs_id_t);
+    ptr[0] = add;
 }
 
 static
 void remove_id_from_ids(
     ecs_type_t type,
-    ecs_entity_t remove,
+    ecs_id_t remove,
     ecs_ids_t *out)
 {
     int32_t count = ecs_vector_count(type);
     ecs_id_t *array = ecs_vector_first(type, ecs_id_t);
-
     int32_t i, el = 0;
-    for (i = 0; i < count; i ++) {
-        ecs_id_t e = array[i];
-        if (e != remove) {
-            out->array[el ++] = e;
-            ecs_assert(el <= count, ECS_INTERNAL_ERROR, NULL);
+
+    if (ecs_id_is_wildcard(remove)) {
+        for (i = 0; i < count; i ++) {
+            ecs_id_t id = array[i];
+            if (!ecs_id_match(id, remove)) {
+                out->array[el ++] = id;
+                ecs_assert(el <= count, ECS_INTERNAL_ERROR, NULL);
+            }
+        }
+    } else {
+        for (i = 0; i < count; i ++) {
+            ecs_id_t id = array[i];
+            if (id != remove) {
+                out->array[el ++] = id;
+                ecs_assert(el <= count, ECS_INTERNAL_ERROR, NULL);
+            }
         }
     }
 
@@ -38845,7 +40554,8 @@ void compute_table_diff(
     added_count += next_count - i_next;
     removed_count += node_count - i_node;
 
-    trivial_edge &= (added_count + removed_count) <= 1;
+    trivial_edge &= (added_count + removed_count) <= 1 && 
+        !ecs_id_is_wildcard(id);
 
     if (trivial_edge) {
         /* If edge is trivial there's no need to create a diff element for it.
@@ -38895,6 +40605,46 @@ void compute_table_diff(
 }
 
 static
+void add_with_ids_to_ids(
+    ecs_world_t *world,
+    ecs_vector_t **idv,
+    ecs_entity_t r,
+    ecs_entity_t o)
+{
+    /* Check if component/relation has With pairs, which contain ids
+     * that need to be added to the table. */
+    ecs_table_t *id_table = ecs_get_table(world, r);
+    if (!id_table) {
+        return;
+    }
+    
+    ecs_table_record_t *tr = flecs_get_table_record(world, id_table, 
+        ecs_pair(EcsWith, EcsWildcard));
+    if (tr) {
+        int32_t i, with_count = tr->count;
+        int32_t start = tr->column;
+        int32_t end = start + with_count;
+        ecs_id_t *id_ids = ecs_vector_first(id_table->type, ecs_id_t);
+
+        for (i = start; i < end; i ++) {
+            ecs_assert(ECS_PAIR_RELATION(id_ids[i]) == EcsWith, 
+                ECS_INTERNAL_ERROR, NULL);
+            ecs_id_t id_r = ECS_PAIR_OBJECT(id_ids[i]);
+            ecs_id_t id = id_r;
+            if (o) {
+                id = ecs_pair(id_r, o);
+            }
+
+            /* Always make sure vector has room for one more */
+            add_id_to_ids(idv, id, 0);
+
+            /* Add recursively in case id also has With pairs */
+            add_with_ids_to_ids(world, idv, id_r, o);
+        }
+    }
+}
+
+static
 ecs_table_t* find_or_create_table_with_id(
     ecs_world_t *world,
     ecs_table_t *node,
@@ -38907,24 +40657,33 @@ ecs_table_t* find_or_create_table_with_id(
         return node;
     } else {
         ecs_type_t type = node->type;
-        int32_t count = ecs_vector_count(type);
         ecs_entity_t r_exclusive = 0;
+        ecs_entity_t r = 0, o = 0, re = 0;
 
         if (ECS_HAS_ROLE(id, PAIR)) {
-            ecs_entity_t r = ecs_pair_relation(world, id);
-            if (ecs_has_id(world, r, EcsExclusive)) {
-                r_exclusive = (uint32_t)r;
+            r = ECS_PAIR_RELATION(id);
+            o = ECS_PAIR_OBJECT(id);
+            re = ecs_get_alive(world, r);
+            if (re && ecs_has_id(world, re, EcsExclusive)) {
+                r_exclusive = (uint32_t)re;
             }
+        } else {
+            r = id & ECS_COMPONENT_MASK;
+            re = ecs_get_alive(world, r);
+        }
+
+        ecs_vector_t *idv = ecs_vector_copy(type, ecs_id_t);
+        add_id_to_ids(&idv, id, r_exclusive);
+        if (re) {
+            add_with_ids_to_ids(world, &idv, re, o);
         }
 
         ecs_ids_t ids = {
-            .array = ecs_os_alloca_n(ecs_id_t, count + 1),
-            .count = count + 1
+            .array = ecs_vector_first(idv, ecs_id_t),
+            .count = ecs_vector_count(idv)
         };
 
-        add_id_to_ids(type, id, &ids, r_exclusive);
-
-        return flecs_table_find_or_create(world, &ids);
+        return find_or_create(world, &ids, idv);
     }
 }
 
@@ -39136,110 +40895,12 @@ error:
     return NULL;
 }
 
-static
-bool ecs_entity_array_is_ordered(
-    const ecs_ids_t *entities)
-{
-    ecs_entity_t prev = 0;
-    ecs_entity_t *array = entities->array;
-    int32_t i, count = entities->count;
-
-    for (i = 0; i < count; i ++) {
-        if (!array[i] && !prev) {
-            continue;
-        }
-        if (array[i] <= prev) {
-            return false;
-        }
-        prev = array[i];
-    }    
-
-    return true;
-}
-
-static
-int32_t ecs_entity_array_dedup(
-    ecs_entity_t *array,
-    int32_t count)
-{
-    int32_t j, k;
-    ecs_entity_t prev = array[0];
-
-    for (k = j = 1; k < count; j ++, k++) {
-        ecs_entity_t e = array[k];
-        if (e == prev) {
-            k ++;
-        }
-
-        array[j] = e;
-        prev = e;
-    }
-
-    return count - (k - j);
-}
-
-static
-ecs_table_t* find_or_create(
-    ecs_world_t *world,
-    const ecs_ids_t *ids)
-{    
-    ecs_poly_assert(world, ecs_world_t);   
-
-    /* Make sure array is ordered and does not contain duplicates */
-    int32_t id_count = ids->count;
-    ecs_id_t *ordered = NULL;
-
-    if (!id_count) {
-        return &world->store.root;
-    }
-
-    if (!ecs_entity_array_is_ordered(ids)) {
-        if (id_count > world->store.id_cache.count) {
-            ecs_os_free(world->store.id_cache.array);
-            world->store.id_cache.array = ecs_os_malloc_n(ecs_id_t, id_count);
-            world->store.id_cache.count = id_count;
-        }
-
-        ordered = world->store.id_cache.array;
-        ecs_os_memcpy_n(ordered, ids->array, ecs_id_t, id_count);
-        qsort(ordered, (size_t)id_count, sizeof(ecs_entity_t), 
-            flecs_entity_compare_qsort);
-        id_count = ecs_entity_array_dedup(ordered, id_count);  
-    } else {
-        ordered = ids->array;
-    }
-
-    ecs_ids_t ordered_ids = {
-        .array = ordered,
-        .count = id_count
-    };
-
-    ecs_table_t *table;
-    flecs_hashmap_result_t elem = flecs_hashmap_ensure(
-        world->store.table_map, &ordered_ids, ecs_table_t*);
-    if ((table = *(ecs_table_t**)elem.value)) {
-        return table;
-    }
-
-    /* If we get here, table needs to be created which is only allowed when the
-     * application is not currently in progress */
-    ecs_assert(!world->is_readonly, ECS_INTERNAL_ERROR, NULL);
-
-    /* If we get here, the table has not been found, so create it. */
-    ecs_table_t *result = create_table(world, &ordered_ids, elem);
-    
-    ecs_assert(ordered_ids.count == ecs_vector_count(result->type), 
-        ECS_INTERNAL_ERROR, NULL);
-
-    return result;
-}
-
 ecs_table_t* flecs_table_find_or_create(
     ecs_world_t *world,
     const ecs_ids_t *ids)
 {
-    ecs_poly_assert(world, ecs_world_t);   
-    return find_or_create(world, ids);
+    ecs_poly_assert(world, ecs_world_t);
+    return find_or_create(world, ids, NULL);
 }
 
 void flecs_init_root_table(
@@ -39252,7 +40913,8 @@ void flecs_init_root_table(
         .count = 0
     };
 
-    init_table(world, &world->store.root, &entities);
+    world->store.root.type = ids_to_vector(&entities);
+    init_table(world, &world->store.root);
 
     /* Ensure table indices start at 1, as 0 is reserved for the root */
     uint64_t new_id = flecs_sparse_new_id(world->store.tables);
@@ -39332,6 +40994,7 @@ ecs_table_t* ecs_table_remove_id(
     return flecs_table_traverse_remove(world, table, &id, NULL);
 }
 
+#include <stddef.h>
 
 #define INIT_CACHE(it, f, term_count)\
     if (!it->f && term_count) {\
@@ -39644,7 +41307,8 @@ void* ecs_term_w_size(
     int32_t term)
 {
     ecs_check(it->is_valid, ECS_INVALID_PARAMETER, NULL);
-    ecs_check(!size || ecs_term_size(it, term) == size, 
+    ecs_check(!size || ecs_term_size(it, term) == size || 
+        (!ecs_term_size(it, term) && (!it->ptrs || !it->ptrs[term - 1])), 
         ECS_INVALID_PARAMETER, NULL);
 
     (void)size;
@@ -40133,6 +41797,7 @@ error:
     return false;
 }
 
+#include <stddef.h>
 
 static
 int32_t count_events(
@@ -40209,10 +41874,6 @@ void inc_trigger_count(
             unregister_event_trigger(evt, id);
         }
     }
-
-    // printf("id = %s.%s, count = %d (%d)\n", 
-    //     ecs_get_fullpath(world, event),
-    //     ecs_id_str(world, id), idt->trigger_count, value);
 }
 
 static
@@ -40442,6 +42103,12 @@ void init_iter(
         return;
     }
 
+    if (it->table_only) {
+        it->ids = it->priv.cache.ids;
+        it->ids[0] = it->event_id;
+        return;
+    }
+
     flecs_iter_init(it);
 
     *iter_set = true;
@@ -40449,7 +42116,6 @@ void init_iter(
     it->ids[0] = it->event_id;
 
     ecs_assert(it->table != NULL, ECS_INTERNAL_ERROR, NULL);
-    ecs_assert(!it->world->is_readonly, ECS_INTERNAL_ERROR, NULL);
     ecs_assert(!it->count || it->offset < ecs_table_count(it->table), 
         ECS_INTERNAL_ERROR, NULL);
     ecs_assert((it->offset + it->count) <= ecs_table_count(it->table), 
@@ -40536,6 +42202,10 @@ void notify_entity_triggers(
 {
     ecs_assert(triggers != NULL, ECS_INTERNAL_ERROR, NULL);
 
+    if (it->table_only) {
+        return;
+    }
+
     ecs_map_iter_t mit = ecs_map_iter(triggers);
     ecs_trigger_t *t;
     int32_t offset = it->offset, count = it->count;
@@ -40619,14 +42289,16 @@ void notify_set_base_triggers(
             continue;
         }
 
-        if (!it->subjects[0]) {
-            it->subjects[0] = obj;
-        }
+        if (!it->table_only) {
+            if (!it->subjects[0]) {
+                it->subjects[0] = obj;
+            }
 
-        if (column != -1) {
-            it->columns[0] = -(column + 1);
-        } else {
-            it->columns[0] = 0;
+            if (column != -1) {
+                it->columns[0] = -(column + 1);
+            } else {
+                it->columns[0] = 0;
+            }
         }
 
         it->is_filter = t->term.inout == EcsInOutFilter;
@@ -40650,6 +42322,10 @@ void notify_set_triggers(
 {
     ecs_assert(triggers != NULL, ECS_INTERNAL_ERROR, NULL);
     ecs_assert(it->count != 0, ECS_INTERNAL_ERROR, NULL);
+
+    if (it->table_only) {
+        return;
+    }
 
     ecs_map_iter_t mit = ecs_map_iter(triggers);
     ecs_trigger_t *t;
@@ -40692,11 +42368,7 @@ void notify_set_triggers(
                 continue;
             }
 
-            ecs_entity_t event_id = it->event_id;
-            it->event_id = t->term.id;
-
             it->is_filter = t->term.inout == EcsInOutFilter;
-            it->ids[0] = t->term.id;
             it->system = t->entity;
             it->self = t->self;
             it->ctx = t->ctx;
@@ -40718,8 +42390,6 @@ void notify_set_triggers(
                 }
                 it->entities = entities;
             }
-
-            it->event_id = event_id;
         }
 
         it->entities[0] = subj;
@@ -40792,6 +42462,7 @@ void trigger_yield_existing(
         it.system = trigger->entity;
         it.ctx = trigger->ctx;
         it.binding_ctx = trigger->binding_ctx;
+        it.event = evt;
 
         ecs_iter_next_action_t next = it.next;
         ecs_assert(next != NULL, ECS_INTERNAL_ERROR, NULL);
@@ -41063,6 +42734,7 @@ void flecs_trigger_fini(
     flecs_sparse_remove(world->triggers, trigger->id);
 }
 
+#include <time.h>
 
 #ifndef NDEBUG
 static int64_t s_min[] = { 
@@ -41223,166 +42895,6 @@ uint64_t flecs_string_hash(
 */
 
 
-static int ecs_os_time_initialized;
-
-#if defined(_WIN32)
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <WinSock2.h>
-#include <windows.h>
-static double _ecs_os_time_win_freq;
-static LARGE_INTEGER _ecs_os_time_win_start;
-#elif defined(__APPLE__) && defined(__MACH__)
-#include <mach/mach_time.h>
-static mach_timebase_info_data_t _ecs_os_time_osx_timebase;
-static uint64_t _ecs_os_time_osx_start;
-#elif defined(__EMSCRIPTEN__)
-#include <emscripten.h>
-static uint64_t _ecs_os_time_posix_start;
-#else /* anything else, this will need more care for non-Linux platforms */
-#include <time.h>
-static uint64_t _ecs_os_time_posix_start;
-#endif
-
-/* prevent 64-bit overflow when computing relative timestamp
-    see https://gist.github.com/jspohr/3dc4f00033d79ec5bdaf67bc46c813e3
-*/
-#if defined(_WIN32) || (defined(__APPLE__) && defined(__MACH__))
-int64_t int64_muldiv(int64_t value, int64_t numer, int64_t denom) {
-    int64_t q = value / denom;
-    int64_t r = value % denom;
-    return q * numer + r * numer / denom;
-}
-#endif
-
-void flecs_os_time_setup(void) {
-    if ( ecs_os_time_initialized) {
-        return;
-    }
-    
-    ecs_os_time_initialized = 1;
-    #if defined(_WIN32)
-        LARGE_INTEGER freq;
-        QueryPerformanceFrequency(&freq);
-        QueryPerformanceCounter(&_ecs_os_time_win_start);
-        _ecs_os_time_win_freq = (double)freq.QuadPart / 1000000000.0;
-    #elif defined(__APPLE__) && defined(__MACH__)
-        mach_timebase_info(&_ecs_os_time_osx_timebase);
-        _ecs_os_time_osx_start = mach_absolute_time();
-    #else
-        struct timespec ts;
-        clock_gettime(CLOCK_MONOTONIC, &ts);
-        _ecs_os_time_posix_start = (uint64_t)ts.tv_sec*1000000000 + (uint64_t)ts.tv_nsec; 
-    #endif
-}
-
-uint64_t flecs_os_time_now(void) {
-    ecs_assert(ecs_os_time_initialized != 0, ECS_INTERNAL_ERROR, NULL);
-
-    uint64_t now;
-
-    #if defined(_WIN32)
-        LARGE_INTEGER qpc_t;
-        QueryPerformanceCounter(&qpc_t);
-        now = (uint64_t)(qpc_t.QuadPart / _ecs_os_time_win_freq);
-    #elif defined(__APPLE__) && defined(__MACH__)
-        now = (uint64_t) int64_muldiv((int64_t)mach_absolute_time(), (int64_t)_ecs_os_time_osx_timebase.numer, (int64_t)_ecs_os_time_osx_timebase.denom);
-    #elif defined(__EMSCRIPTEN__)
-        now = (long long)(emscripten_get_now() * 1000.0 * 1000);
-    #else
-        struct timespec ts;
-        clock_gettime(CLOCK_MONOTONIC, &ts);
-        now = ((uint64_t)ts.tv_sec * 1000 * 1000 * 1000 + (uint64_t)ts.tv_nsec);
-    #endif
-
-    return now;
-}
-
-void flecs_os_time_sleep(
-    int32_t sec, 
-    int32_t nanosec) 
-{
-#ifndef _WIN32
-    struct timespec sleepTime;
-    ecs_assert(sec >= 0, ECS_INTERNAL_ERROR, NULL);
-    ecs_assert(nanosec >= 0, ECS_INTERNAL_ERROR, NULL);
-
-    sleepTime.tv_sec = sec;
-    sleepTime.tv_nsec = nanosec;
-    if (nanosleep(&sleepTime, NULL)) {
-        ecs_err("nanosleep failed");
-    }
-#else
-    HANDLE timer;
-    LARGE_INTEGER ft;
-
-    ft.QuadPart = -((int64_t)sec * 10000000 + (int64_t)nanosec / 100);
-
-    timer = CreateWaitableTimer(NULL, TRUE, NULL);
-    SetWaitableTimer(timer, &ft, 0, NULL, NULL, 0);
-    WaitForSingleObject(timer, INFINITE);
-    CloseHandle(timer);
-#endif
-}
-
-#if defined(_WIN32)
-
-static ULONG win32_current_resolution;
-
-void flecs_increase_timer_resolution(bool enable)
-{
-    HMODULE hntdll = GetModuleHandle((LPCTSTR)"ntdll.dll");
-    if (!hntdll) {
-        return;
-    }
-
-    LONG (__stdcall *pNtSetTimerResolution)(
-        ULONG desired, BOOLEAN set, ULONG * current);
-
-    pNtSetTimerResolution = (LONG(__stdcall*)(ULONG, BOOLEAN, ULONG*))
-        GetProcAddress(hntdll, "NtSetTimerResolution");
-
-    if(!pNtSetTimerResolution) {
-        return;
-    }
-
-    ULONG current, resolution = 10000; /* 1 ms */
-
-    if (!enable && win32_current_resolution) {
-        pNtSetTimerResolution(win32_current_resolution, 0, &current);
-        win32_current_resolution = 0;
-        return;
-    } else if (!enable) {
-        return;
-    }
-
-    if (resolution == win32_current_resolution) {
-        return;
-    }
-
-    if (win32_current_resolution) {
-        pNtSetTimerResolution(win32_current_resolution, 0, &current);
-    }
-
-    if (pNtSetTimerResolution(resolution, 1, &current)) {
-        /* Try setting a lower resolution */
-        resolution *= 2;
-        if(pNtSetTimerResolution(resolution, 1, &current)) return;
-    }
-
-    win32_current_resolution = resolution;
-}
-
-#else
-void flecs_increase_timer_resolution(bool enable)
-{
-    (void)enable;
-    return;
-}
-#endif
-
-
 /* -- Component lifecycle -- */
 
 /* Component lifecycle actions for EcsIdentifier */
@@ -41480,6 +42992,47 @@ static ECS_MOVE(EcsObserver, dst, src, {
 /* -- Builtin triggers -- */
 
 static
+void assert_relation_unused(
+    ecs_world_t *world, 
+    ecs_entity_t rel,
+    ecs_entity_t property)
+{
+    if (flecs_get_id_record(world, ecs_pair(rel, EcsWildcard)) != NULL) {
+        char *r_str = ecs_get_fullpath(world, rel);
+        char *p_str = ecs_get_fullpath(world, property);
+
+        ecs_throw(ECS_ID_IN_USE, 
+            "cannot add property '%s' to relation '%s': already in use",
+            p_str, r_str);
+        
+        ecs_os_free(r_str);
+        ecs_os_free(p_str);
+    }
+
+error:
+    return;
+}
+
+static
+void register_final(ecs_iter_t *it) {
+    ecs_world_t *world = it->world;
+    
+    int i, count = it->count;
+    for (i = 0; i < count; i ++) {
+        ecs_entity_t e = it->entities[i];
+        if (flecs_get_id_record(world, ecs_pair(EcsIsA, e)) != NULL) {
+            char *e_str = ecs_get_fullpath(world, e);
+            ecs_throw(ECS_ID_IN_USE,
+                "cannot add property 'Final' to '%s': already inherited from",
+                    e_str);
+            ecs_os_free(e_str);
+        error:
+            continue;
+        }
+    }
+}
+
+static
 void register_on_delete(ecs_iter_t *it) {
     ecs_world_t *world = it->world;
     ecs_id_t id = ecs_term_id(it, 1);
@@ -41487,13 +43040,11 @@ void register_on_delete(ecs_iter_t *it) {
     int i, count = it->count;
     for (i = 0; i < count; i ++) {
         ecs_entity_t e = it->entities[i];
+        assert_relation_unused(world, e, EcsOnDelete);
+
         ecs_id_record_t *r = flecs_ensure_id_record(world, e);
         ecs_assert(r != NULL, ECS_INTERNAL_ERROR, NULL);
-        r->on_delete = ECS_PAIR_OBJECT(id);
-
-        r = flecs_ensure_id_record(world, ecs_pair(e, EcsWildcard));
-        ecs_assert(r != NULL, ECS_INTERNAL_ERROR, NULL);
-        r->on_delete = ECS_PAIR_OBJECT(id);
+        r->flags |= ECS_ID_ON_DELETE_FLAG(ECS_PAIR_OBJECT(id));
 
         flecs_add_flag(world, e, ECS_FLAG_OBSERVED_ID);
     }
@@ -41507,12 +43058,89 @@ void register_on_delete_object(ecs_iter_t *it) {
     int i, count = it->count;
     for (i = 0; i < count; i ++) {
         ecs_entity_t e = it->entities[i];
+        assert_relation_unused(world, e, EcsOnDeleteObject);
+
         ecs_id_record_t *r = flecs_ensure_id_record(world, e);
         ecs_assert(r != NULL, ECS_INTERNAL_ERROR, NULL);
-        r->on_delete_object = ECS_PAIR_OBJECT(id);
+        r->flags |= ECS_ID_ON_DELETE_OBJECT_FLAG(ECS_PAIR_OBJECT(id));
 
         flecs_add_flag(world, e, ECS_FLAG_OBSERVED_ID);
     }    
+}
+
+static
+void register_exclusive(ecs_iter_t *it) {
+    ecs_world_t *world = it->world;
+    
+    int i, count = it->count;
+    for (i = 0; i < count; i ++) {
+        ecs_entity_t e = it->entities[i];
+        assert_relation_unused(world, e, EcsExclusive);
+
+        ecs_id_record_t *r = flecs_ensure_id_record(world, e);
+        r->flags |= ECS_ID_EXCLUSIVE;
+    } 
+}
+
+static
+void register_dont_inherit(ecs_iter_t *it) {
+    ecs_world_t *world = it->world;
+    
+    int i, count = it->count;
+    for (i = 0; i < count; i ++) {
+        ecs_entity_t e = it->entities[i];
+        assert_relation_unused(world, e, EcsDontInherit);
+
+        ecs_id_record_t *r = flecs_ensure_id_record(world, e);
+        r->flags |= ECS_ID_DONT_INHERIT;
+    } 
+}
+
+static
+void on_symmetric_add_remove(ecs_iter_t *it) {
+    ecs_entity_t pair = ecs_term_id(it, 1);
+
+    if (!ECS_HAS_ROLE(pair, PAIR)) {
+        /* If relationship was not added as a pair, there's nothing to do */
+        return;
+    }
+
+    ecs_entity_t rel = ECS_PAIR_RELATION(pair);
+    ecs_entity_t obj = ECS_PAIR_OBJECT(pair);
+    ecs_entity_t event = it->event;
+    
+    int i, count = it->count;
+    for (i = 0; i < count; i ++) {
+        ecs_entity_t subj = it->entities[i];
+        if (event == EcsOnAdd) {
+            if (!ecs_has_id(it->real_world, obj, ecs_pair(rel, subj))) {
+                ecs_add_pair(it->world, obj, rel, subj);   
+            }
+        } else {
+            if (ecs_has_id(it->real_world, obj, ecs_pair(rel, subj))) {
+                ecs_remove_pair(it->world, obj, rel, subj);   
+            }
+        }
+    }
+}
+
+static
+void register_symmetric(ecs_iter_t *it) {
+    ecs_world_t *world = it->real_world;
+
+    int i, count = it->count;
+    for (i = 0; i < count; i ++) {
+        ecs_entity_t r = it->entities[i];
+        assert_relation_unused(world, r, EcsSymmetric);
+
+        /* Create trigger that adds the reverse relationship when R(X, Y) is
+         * added, or remove the reverse relationship when R(X, Y) is removed. */
+        ecs_trigger_init(world, &(ecs_trigger_desc_t) {
+            .term.id = ecs_pair(r, EcsWildcard),
+            .callback = on_symmetric_add_remove,
+            .events = {EcsOnAdd, EcsOnRemove}
+        });
+    } 
 }
 
 static
@@ -41552,10 +43180,8 @@ void on_event_iterable_init(
     ecs_term_t *filter)
 {
     ecs_iter_poly(world, poly, it, filter);
-    it->event = EcsOnAdd;
     it->event_id = filter->id;
 }
-
 
 /* -- Bootstrapping -- */
 
@@ -41603,22 +43229,6 @@ void _bootstrap_component(
     symbol_col[index].hash = flecs_hash(symbol, symbol_length);    
 }
 
-/** Create type for component */
-ecs_type_t flecs_bootstrap_type(
-    ecs_world_t *world,
-    ecs_entity_t entity)
-{
-    ecs_table_t *table = flecs_table_find_or_create(world, &(ecs_ids_t){
-        .array = (ecs_entity_t[]){entity},
-        .count = 1
-    });
-
-    ecs_assert(table != NULL, ECS_INTERNAL_ERROR, NULL);
-    ecs_assert(table->type != NULL, ECS_INTERNAL_ERROR, NULL);
-
-    return table->type;
-}
-
 /** Initialize component table. This table is manually constructed to bootstrap
  * flecs. After this function has been called, the builtin components can be
  * created. 
@@ -41629,16 +43239,28 @@ static
 ecs_table_t* bootstrap_component_table(
     ecs_world_t *world)
 {
+    /* Before creating table, manually set flags for ChildOf/Identifier, as this
+     * can no longer be done after they are in use. */
+    ecs_id_record_t *childof_idr = flecs_ensure_id_record(world, EcsChildOf);
+    childof_idr->flags |= ECS_ID_ON_DELETE_OBJECT_DELETE;
+    childof_idr->flags |= ECS_ID_DONT_INHERIT;
+
+    ecs_id_record_t *ident_idr = flecs_ensure_id_record(
+        world, ecs_id(EcsIdentifier));
+    ident_idr->flags |= ECS_ID_DONT_INHERIT;
+
     ecs_id_t entities[] = {
         ecs_id(EcsComponent), 
+        EcsFinal,
         ecs_pair(ecs_id(EcsIdentifier), EcsName),
         ecs_pair(ecs_id(EcsIdentifier), EcsSymbol),
-        ecs_pair(EcsChildOf, EcsFlecsCore)
+        ecs_pair(EcsChildOf, EcsFlecsCore),
+        ecs_pair(EcsOnDelete, EcsThrow)
     };
     
     ecs_ids_t array = {
         .array = entities,
-        .count = 4
+        .count = 6
     };
 
     ecs_table_t *result = flecs_table_find_or_create(world, &array);
@@ -41754,14 +43376,18 @@ void flecs_bootstrap(
     bootstrap_entity(world, EcsWorld, "World", EcsFlecsCore);
     bootstrap_entity(world, EcsThis, "This", EcsFlecsCore);
     bootstrap_entity(world, EcsWildcard, "*", EcsFlecsCore);
+    bootstrap_entity(world, EcsAny, "_", EcsFlecsCore);
 
     /* Component/relationship properties */
     flecs_bootstrap_tag(world, EcsTransitive);
-    flecs_bootstrap_tag(world, EcsTransitiveSelf);
+    flecs_bootstrap_tag(world, EcsReflexive);
+    flecs_bootstrap_tag(world, EcsSymmetric);
     flecs_bootstrap_tag(world, EcsFinal);
+    flecs_bootstrap_tag(world, EcsDontInherit);
     flecs_bootstrap_tag(world, EcsTag);
     flecs_bootstrap_tag(world, EcsExclusive);
     flecs_bootstrap_tag(world, EcsAcyclic);
+    flecs_bootstrap_tag(world, EcsWith);
 
     flecs_bootstrap_tag(world, EcsOnDelete);
     flecs_bootstrap_tag(world, EcsOnDeleteObject);
@@ -41789,36 +43415,22 @@ void flecs_bootstrap(
     // bootstrap_entity(world, EcsOnDeleteObservable, "OnDeleteObservable", EcsFlecsCore);
     // bootstrap_entity(world, EcsOnComponentLifecycle, "OnComponentLifecycle", EcsFlecsCore);
 
+    /* Transitive relations are always Acyclic */
+    ecs_add_pair(world, EcsTransitive, EcsWith, EcsAcyclic);
+
     /* Transitive relations */
     ecs_add_id(world, EcsIsA, EcsTransitive);
-    ecs_add_id(world, EcsIsA, EcsTransitiveSelf);
+    ecs_add_id(world, EcsIsA, EcsReflexive);
 
     /* Tag relations (relations that should never have data) */
     ecs_add_id(world, EcsIsA, EcsTag);
     ecs_add_id(world, EcsChildOf, EcsTag);
     ecs_add_id(world, EcsDefaultChildComponent, EcsTag);
 
-    /* Final components/relations */
-    ecs_add_id(world, ecs_id(EcsComponent), EcsFinal);
-    ecs_add_id(world, ecs_id(EcsComponentLifecycle), EcsFinal);
-    ecs_add_id(world, ecs_id(EcsIdentifier), EcsFinal);
-    ecs_add_id(world, EcsModule, EcsFinal);
-    ecs_add_id(world, EcsDisabled, EcsFinal);
-    ecs_add_id(world, EcsPrefab, EcsFinal);
-    ecs_add_id(world, EcsTransitive, EcsFinal);
-    ecs_add_id(world, EcsFinal, EcsFinal);
-    ecs_add_id(world, EcsTag, EcsFinal);
-    ecs_add_id(world, EcsExclusive, EcsFinal);
-    ecs_add_id(world, EcsAcyclic, EcsFinal);
-    ecs_add_id(world, EcsIsA, EcsFinal);
-    ecs_add_id(world, EcsChildOf, EcsFinal);
-    ecs_add_id(world, EcsOnDelete, EcsFinal);
-    ecs_add_id(world, EcsOnDeleteObject, EcsFinal);
-    ecs_add_id(world, EcsDefaultChildComponent, EcsFinal);
-
     /* Acyclic relations */
     ecs_add_id(world, EcsIsA, EcsAcyclic);
     ecs_add_id(world, EcsChildOf, EcsAcyclic);
+    ecs_add_id(world, EcsWith, EcsAcyclic);
 
     /* Exclusive properties */
     ecs_add_id(world, EcsChildOf, EcsExclusive);
@@ -41830,36 +43442,70 @@ void flecs_bootstrap(
     ecs_set(world, EcsOnAdd, EcsIterable, { .init = on_event_iterable_init });
     ecs_set(world, EcsOnSet, EcsIterable, { .init = on_event_iterable_init });
 
-    /* Define triggers for when relationship cleanup rules are assigned */
+    /* Removal of ChildOf objects (parents) deletes the subject (child) */
+    ecs_add_pair(world, EcsChildOf, EcsOnDeleteObject, EcsDelete); 
+
+    /* ChildOf, Identifier, Disabled and Prefab should never be inherited */
+    ecs_add_id(world, EcsChildOf, EcsDontInherit);
+    ecs_add_id(world, ecs_id(EcsIdentifier), EcsDontInherit);
+
+    /* The (IsA, *) id record is used often in searches, so cache it */
+    world->idr_isa_wildcard = flecs_ensure_id_record(world, 
+        ecs_pair(EcsIsA, EcsWildcard));
+
     ecs_trigger_init(world, &(ecs_trigger_desc_t){
-        .term = {.id = ecs_pair(EcsOnDelete, EcsWildcard)},
-        .callback = register_on_delete,
-        .events = {EcsOnAdd}
+        .term = {.id = EcsFinal, .subj.set.mask = EcsSelf },
+        .events = {EcsOnAdd},
+        .callback = register_final
     });
 
     ecs_trigger_init(world, &(ecs_trigger_desc_t){
-        .term = {.id = ecs_pair(EcsOnDeleteObject, EcsWildcard)},
-        .callback = register_on_delete_object,
-        .events = {EcsOnAdd}
+        .term = {.id = ecs_pair(EcsOnDelete, EcsWildcard), .subj.set.mask = EcsSelf },
+        .events = {EcsOnAdd},
+        .callback = register_on_delete
+    });
+
+    ecs_trigger_init(world, &(ecs_trigger_desc_t){
+        .term = {.id = ecs_pair(EcsOnDeleteObject, EcsWildcard), .subj.set.mask = EcsSelf },
+        .events = {EcsOnAdd},
+        .callback = register_on_delete_object
+    });
+
+    ecs_trigger_init(world, &(ecs_trigger_desc_t){
+        .term = {.id = EcsExclusive, .subj.set.mask = EcsSelf  },
+        .events = {EcsOnAdd},
+        .callback = register_exclusive
+    });
+
+    ecs_trigger_init(world, &(ecs_trigger_desc_t){
+        .term = {.id = EcsSymmetric, .subj.set.mask = EcsSelf  },
+        .events = {EcsOnAdd},
+        .callback = register_symmetric
+    });
+
+    ecs_trigger_init(world, &(ecs_trigger_desc_t){
+        .term = {.id = EcsDontInherit, .subj.set.mask = EcsSelf },
+        .events = {EcsOnAdd},
+        .callback = register_dont_inherit
     });
 
     /* Define trigger to make sure that adding a module to a child entity also
      * adds it to the parent. */
     ecs_trigger_init(world, &(ecs_trigger_desc_t){
-        .term = {.id = EcsModule},
-        .callback = ensure_module_tag,
-        .events = {EcsOnAdd}
+        .term = {.id = EcsModule, .subj.set.mask = EcsSelf },
+        .events = {EcsOnAdd},
+        .callback = ensure_module_tag
     });
 
     /* Define trigger for when component lifecycle is set for component */
     ecs_trigger_init(world, &(ecs_trigger_desc_t){
-        .term = {.id = ecs_id(EcsComponentLifecycle)},
-        .callback = on_set_component_lifecycle,
-        .events = {EcsOnSet}
+        .term = {.id = ecs_id(EcsComponentLifecycle), .subj.set.mask = EcsSelf },
+        .events = {EcsOnSet},
+        .callback = on_set_component_lifecycle
     });  
 
-    /* Removal of ChildOf objects (parents) deletes the subject (child) */
-    ecs_add_pair(world, EcsChildOf, EcsOnDeleteObject, EcsDelete);  
+    ecs_add_id(world, EcsDisabled, EcsDontInherit);
+    ecs_add_id(world, EcsPrefab, EcsDontInherit);
 
     /* Run bootstrap functions for other parts of the code */
     flecs_bootstrap_hierarchy(world);
@@ -41869,7 +43515,8 @@ void flecs_bootstrap(
     ecs_log_pop();
 }
 
-
+#include <stdio.h>
+#include <ctype.h>
 
 #define ECS_NAME_BUFFER_LENGTH (64)
 
@@ -42034,6 +43681,8 @@ ecs_entity_t get_builtin(
         return EcsThis;
     } else if (name[0] == '*' && name[1] == '\0') {
         return EcsWildcard;
+    } else if (name[0] == '_' && name[1] == '\0') {
+        return EcsAny;
     }
 
     return 0;
@@ -42169,7 +43818,7 @@ ecs_hashmap_t _flecs_string_hashmap_new(ecs_size_t size) {
 
 void flecs_bootstrap_hierarchy(ecs_world_t *world) {
     ecs_trigger_init(world, &(ecs_trigger_desc_t){
-        .term = {.id = ecs_pair(ecs_id(EcsIdentifier), EcsSymbol)},
+        .term = {.id = ecs_pair(ecs_id(EcsIdentifier), EcsSymbol), .subj.set.mask = EcsSelf },
         .callback = on_set_symbol,
         .events = {EcsOnSet},
         .yield_existing = true
@@ -42333,6 +43982,7 @@ ecs_entity_t ecs_lookup_path_w_sep(
     }
 
     ecs_check(world != NULL, ECS_INTERNAL_ERROR, NULL);
+    const ecs_world_t *stage = world;
     world = ecs_get_world(world);
 
     ecs_entity_t e = get_builtin(path);
@@ -42356,7 +44006,7 @@ ecs_entity_t ecs_lookup_path_w_sep(
         sep = ".";
     }
 
-    parent = get_parent_from_path(world, parent, &path, prefix, true);
+    parent = get_parent_from_path(stage, parent, &path, prefix, true);
 
 retry:
     cur = parent;
@@ -42415,14 +44065,6 @@ ecs_entity_t ecs_set_scope(
 
     ecs_entity_t cur = stage->scope;
     stage->scope = scope;
-
-    if (scope) {
-        ecs_id_t id = ecs_pair(EcsChildOf, scope);
-        stage->scope_table = flecs_table_traverse_add(
-            world, &world->store.root, &id, NULL);
-    } else {
-        stage->scope_table = &world->store.root;
-    }
 
     return cur;
 error:
