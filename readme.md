@@ -87,7 +87,7 @@ Create a directory to be statically served:
 mkdir static
 ```
 
-Create a file called `index.html` unders `static/`:
+Create a file called `index.html` under `static/`:
 ```html
 <html>
   <body>
