@@ -122,7 +122,7 @@ pub fn register_component(world: *mut ecs_world_t, desc: ComponentDescriptor) ->
     #[cfg(all(target_arch = "wasm32", target_os = "emscripten"))] 
 		alignment: desc.layout.align() as u32,
     #[cfg(all(not(target_arch = "wasm32"), not(target_os = "emscripten")))] 
-		alignment: desc.layout.align() as u32,
+		alignment: desc.layout.align() as u64,
 	};
 
 	let comp_entity = unsafe { ecs_component_init(world, &comp_desc) };
