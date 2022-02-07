@@ -309,6 +309,9 @@ impl Iter {
 		// println!("Term: {}, is_shared: {}, count: {}", term_id, is_shared, count);
 
 		let size = std::mem::size_of::<T>();
+    #[cfg(all(target_arch = "wasm32", target_os = "emscripten"))] 
+    let array = unsafe { ecs_term_w_size(self.it, size as u32, index) as *mut T };
+    #[cfg(all(not(target_arch = "wasm32"), not(target_os = "emscripten")))] 
 		let array = unsafe { ecs_term_w_size(self.it, size as u64, index) as *mut T };
         
 		Column::new(array, count, is_shared)
@@ -330,7 +333,11 @@ impl Iter {
 			size = info.size;
 		}
 
+    #[cfg(all(target_arch = "wasm32", target_os = "emscripten"))] 
+		let array = unsafe { ecs_term_w_size(self.it, size as u32, index) as *mut u8 };
+    #[cfg(all(not(target_arch = "wasm32"), not(target_os = "emscripten")))] 
 		let array = unsafe { ecs_term_w_size(self.it, size as u64, index) as *mut u8 };
+    
 		ColumnDynamic::new(array, count, size as usize, is_shared)
     }	
 }
