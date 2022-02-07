@@ -75,12 +75,12 @@ cargo run --example hello_world
 cargo run --example prefabs
 ```
 
-## Usage with WebAssembly
-Usage with WebAssembly requires using the `wasm32-unknown-emscripten`.
+## Compiling with WebAssembly
+Compiling with WebAssembly requires using the `wasm32-unknown-emscripten` target.
 
-This is because there is no official toolchain for C/C++ targeting wasm32-unknown-unknown, which means C/C++ bindings do not work and will result in unresolved symbols.
+This is because there is no official toolchain for C/C++ targeting `wasm32-unknown-unknown`, which means that C/C++ bindings with do not work with this target and will result in unresolved symbols.
 
-This target which is not as well supported as the `wasm32-unknown-unknown` which means `wasm-bindgen` and some other popular Rust libraries that target WebAssembly will not work. So be sure to keep that in mind.
+The Emscripten target which is not as well supported as the `wasm32-unknown-unknown`, which means that `wasm-bindgen` and some other popular Rust libraries that target WebAssembly will not work. So be sure to keep that in mind.
 
 Create a directory to be statically served:
 ```bash
