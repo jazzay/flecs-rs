@@ -280,65 +280,65 @@ impl Iter {
     }
 
     fn get_term<T: Component>(&self, index: i32) -> Column<T> {
-		// validate that types match. could avoid this in Release builds perhaps to get max perf
-        let term_id = unsafe { ecs_term_id(self.it, index) };
-		let world = unsafe { (*self.it).real_world };	// must use real to get component infos
-		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(world).expect("Component type not registered!");
-		// println!("Term: {}, Comp: {}", term_id, comp_id);
-		assert!(term_id == comp_id);
+			// validate that types match. could avoid this in Release builds perhaps to get max perf
+			let term_id = unsafe { ecs_term_id(self.it, index) };
+			let world = unsafe { (*self.it).real_world };	// must use real to get component infos
+			let comp_id = WorldInfoCache::get_component_id_for_type::<T>(world).expect("Component type not registered!");
+			// println!("Term: {}, Comp: {}", term_id, comp_id);
+			assert!(term_id == comp_id);
 
-		/* TODO - validate that the types actually match!!!!
-#ifndef NDEBUG
-        ecs_assert(term_id & ECS_PAIR || term_id & ECS_SWITCH || 
-            term_id & ECS_CASE ||
-            term_id == _::cpp_type<T>::id(m_iter->world), 
-            ECS_COLUMN_TYPE_MISMATCH, NULL);
-#endif
-		*/
+			/* TODO - validate that the types actually match!!!!
+	#ifndef NDEBUG
+					ecs_assert(term_id & ECS_PAIR || term_id & ECS_SWITCH || 
+							term_id & ECS_CASE ||
+							term_id == _::cpp_type<T>::id(m_iter->world), 
+							ECS_COLUMN_TYPE_MISMATCH, NULL);
+	#endif
+			*/
 
-        let mut count = self.count();
+			let mut count = self.count();
 
-        let is_shared = unsafe { !ecs_term_is_owned2(self.it, index) };
+			let is_shared = unsafe { !ecs_term_is_owned2(self.it, index) };
 
-        /* If a shared column is retrieved with 'column', there will only be a
-         * single value. Ensure that the application does not accidentally read
-         * out of bounds. */
-        if is_shared {
-            count = 1;
-        }
-		// println!("Term: {}, is_shared: {}, count: {}", term_id, is_shared, count);
+			/* If a shared column is retrieved with 'column', there will only be a
+				* single value. Ensure that the application does not accidentally read
+				* out of bounds. */
+			if is_shared {
+					count = 1;
+			}
+			// println!("Term: {}, is_shared: {}, count: {}", term_id, is_shared, count);
 
-    let size = std::mem::size_of::<T>();
-    #[cfg(all(target_arch = "wasm32", target_os = "emscripten"))]
-    let array = unsafe { ecs_term_w_size(self.it, size as u32, index) as *mut T };
-    #[cfg(all(not(target_arch = "wasm32"), not(target_os = "emscripten")))]
-    let array = unsafe { ecs_term_w_size(self.it, size as u64, index) as *mut T };
-        
-		Column::new(array, count, is_shared)
+			let size = std::mem::size_of::<T>();
+			#[cfg(all(target_arch = "wasm32", target_os = "emscripten"))]
+			let array = unsafe { ecs_term_w_size(self.it, size as u32, index) as *mut T };
+			#[cfg(all(not(target_arch = "wasm32"), not(target_os = "emscripten")))]
+			let array = unsafe { ecs_term_w_size(self.it, size as u64, index) as *mut T };
+
+			Column::new(array, count, is_shared)
     }
 
     pub fn get_term_dynamic(&self, index: i32) -> ColumnDynamic {
-        let mut count = self.count();
-        let is_shared = unsafe { !ecs_term_is_owned2(self.it, index) };
-        if is_shared {
-            count = 1;
-        }
+			let mut count = self.count();
+			let is_shared = unsafe { !ecs_term_is_owned2(self.it, index) };
+			if is_shared {
+				count = 1;
+			}
 
-		// TODO: look this up within the component info
-		let world = unsafe { (*self.it).real_world };
-        let term_id = unsafe { ecs_term_id(self.it, index) };
-		
-		let mut size = 0;	// we only get a size if there is a component?
-		if let Some(info) = get_component_info(world, term_id) {
+			// TODO: look this up within the component info
+			let world = unsafe { (*self.it).real_world };
+				let term_id = unsafe { ecs_term_id(self.it, index) };
+
+			let mut size = 0;	// we only get a size if there is a component?
+			if let Some(info) = get_component_info(world, term_id) {
 			size = info.size;
-		}
+			}
 
-    #[cfg(all(target_arch = "wasm32", target_os = "emscripten"))]
-    let array = unsafe { ecs_term_w_size(self.it, size as u32, index) as *mut u8 };
-    #[cfg(all(not(target_arch = "wasm32"), not(target_os = "emscripten")))]
-    let array = unsafe { ecs_term_w_size(self.it, size as u64, index) as *mut u8 };
-    
-		ColumnDynamic::new(array, count, size as usize, is_shared)
+			#[cfg(all(target_arch = "wasm32", target_os = "emscripten"))]
+			let array = unsafe { ecs_term_w_size(self.it, size as u32, index) as *mut u8 };
+			#[cfg(all(not(target_arch = "wasm32"), not(target_os = "emscripten")))]
+			let array = unsafe { ecs_term_w_size(self.it, size as u64, index) as *mut u8 };
+
+			ColumnDynamic::new(array, count, size as usize, is_shared)
     }	
 }
 
