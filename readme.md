@@ -74,3 +74,40 @@ cargo test
 cargo run --example hello_world
 cargo run --example prefabs
 ```
+
+## Compiling with WebAssembly
+Compiling with WebAssembly requires using the `wasm32-unknown-emscripten` target.
+
+This is because there is no official toolchain for C/C++ targeting `wasm32-unknown-unknown`, which means that C/C++ bindings with do not work with this target and will result in unresolved symbols.
+
+The Emscripten target which is not as well supported as the `wasm32-unknown-unknown`, which means that `wasm-bindgen` and some other popular Rust libraries that target WebAssembly will not work. So be sure to keep that in mind.
+
+Create a directory to be statically served:
+```bash
+mkdir static
+```
+
+Create a file called `index.html` under `static/`:
+```html
+<html>
+  <body>
+    <script type="module">
+      import init from './systems.js'
+      await init()
+    </script>
+  </body>
+</html>
+```
+
+Build WASM binary:
+```bash
+build --example systems --target wasm32-unknown-emscripten
+cp ./target/wasm32-unknown-emscripten/debug/examples/systems.js ./static/
+cp ./target/wasm32-unknown-emscripten/debug/examples/systems.wasm ./static/
+```
+
+Serve static file locally with any HTTP server tool, for example `basic-http-server`:
+```bash
+cargo install basic-http-server
+basic-http-server ./static/
+```
