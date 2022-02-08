@@ -1,17 +1,31 @@
 use std::env;
 use std::path::PathBuf;
 
+const EM_OS: &str = "emscripten";
+
 fn main() {
     // Tell cargo to invalidate the built crate whenever the sources change
     println!("cargo:rerun-if-changed=flecs.h");
     println!("cargo:rerun-if-changed=flecs.c");
 
+    // Grab this value because #[cfg(all(target_arch = "wasm32", target_os = "emscripten"))] does not work in build.rs
+    // because it assumes that the target is the default OS target
+    // when you specify wasm32-unknown-emscripten.
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap().to_string();
+    if target_os == EM_OS {
+      // Export as JS file as ES6 Module by adding emscripten flag
+      println!("cargo:rustc-link-arg=-sEXPORT_ES6=1");
+      println!("cargo:rustc-link-arg=-sMODULARIZE=1");
+    }
+
     let bindings = bindgen::Builder::default()
         // The input header we would like to generate
         // bindings for.
         .header("flecs.h")
-		.generate_comments(false)
-		.layout_tests(false)
+        // Nessecary for Emscripten target.
+        .clang_arg("-fvisibility=default")
+        .generate_comments(false)
+        .layout_tests(false)
         // Tell cargo to invalidate the built crate whenever any of the
         // included header files changed.
         .parse_callbacks(Box::new(bindgen::CargoCallbacks))
@@ -27,7 +41,7 @@ fn main() {
         .expect("Couldn't write bindings!");
 
     // Compile flecs C right into our Rust crate
-	cc::Build::new()
-		.file("flecs.c")
-		.compile("flecs");		
+    cc::Build::new()
+      .file("flecs.c")
+      .compile("flecs");		
 }

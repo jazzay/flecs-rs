@@ -113,11 +113,12 @@ pub fn register_component(world: *mut ecs_world_t, desc: ComponentDescriptor) ->
 	
 	// let s_id = 0;
 	let comp_desc = ecs_component_desc_t {
-        _canary: 0,
+		_canary: 0,
 		entity: e_desc,
-		size: desc.layout.size() as u64,
-		alignment: desc.layout.align() as u64,
+		size: desc.layout.size() as size_t,
+		alignment: desc.layout.align() as size_t,
 	};
+
 
 	let comp_entity = unsafe { ecs_component_init(world, &comp_desc) };
 	// println!("register_component - comp_entity {}", comp_entity);
