@@ -298,10 +298,7 @@ impl Drop for World {
 impl World {
 	pub fn enable_rest(&self) {
     let rest_comp_id = unsafe { FLECS__EEcsRest as u64 };
-		#[cfg(all(target_arch = "wasm32", target_os = "emscripten"))]
-		let rest_comp_size = std::mem::size_of::<EcsRest>() as u32;
-		#[cfg(all(not(target_arch = "wasm32"), not(target_os = "emscripten")))]
-		let rest_comp_size = std::mem::size_of::<EcsRest>() as u64;
+		let rest_comp_size = std::mem::size_of::<EcsRest>() as size_t;
 		
 		let rest_data: EcsRest = unsafe { MaybeUninit::zeroed().assume_init() };
 

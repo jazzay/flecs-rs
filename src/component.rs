@@ -115,14 +115,8 @@ pub fn register_component(world: *mut ecs_world_t, desc: ComponentDescriptor) ->
 	let comp_desc = ecs_component_desc_t {
 		_canary: 0,
 		entity: e_desc,
-		#[cfg(all(target_arch = "wasm32", target_os = "emscripten"))]
-		size: desc.layout.size() as u32,
-		#[cfg(all(not(target_arch = "wasm32"), not(target_os = "emscripten")))]
-		size: desc.layout.size() as u64,
-		#[cfg(all(target_arch = "wasm32", target_os = "emscripten"))]
-		alignment: desc.layout.align() as u32,
-		#[cfg(all(not(target_arch = "wasm32"), not(target_os = "emscripten")))]
-		alignment: desc.layout.align() as u64,
+		size: desc.layout.size() as size_t,
+		alignment: desc.layout.align() as size_t,
 	};
 
 
