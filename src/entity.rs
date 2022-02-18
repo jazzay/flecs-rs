@@ -163,6 +163,24 @@ impl Entity {
 		self
 	}
 
+	pub fn override_component<T: Component>(self) -> Self {
+		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
+        unsafe { ecs_add_id(self.world, self.entity, ECS_OVERRIDE | comp_id) };
+		self
+	}
+
+	pub fn override_id(self, comp_id: ecs_id_t) -> Self {
+        unsafe { ecs_add_id(self.world, self.entity, ECS_OVERRIDE | comp_id) };
+		self
+	}
+
+	pub fn set_override<T: Component>(self, value: T) -> Self {
+		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
+		self.override_id(comp_id);
+		self.set(value);
+		self
+	}
+
 	// Added to assess performance impact of Type lookup within Benchmarks
     pub fn set_fast<T: Component>(&self, comp_id: u64, value: T)  {
 		// let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
@@ -175,12 +193,6 @@ impl Entity {
 	pub fn add<T: Component>(self) -> Self {
 		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
         unsafe { ecs_add_id(self.world, self.entity, comp_id) };
-		self
-	}
-
-	pub fn override_component<T: Component>(self) -> Self {
-		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
-        unsafe { ecs_add_id(self.world, self.entity, ECS_OVERRIDE | comp_id) };
 		self
 	}
 
@@ -199,7 +211,7 @@ impl Entity {
 	}
 
 	// Added to assess performance impact of Type lookup within Benchmarks
-	pub fn remove_fast<T: Component>(&self, comp_id: u64) {
+	pub fn remove_id(&self, comp_id: u64) {
         unsafe { ecs_remove_id(self.world, self.entity, comp_id) };
 	}
 

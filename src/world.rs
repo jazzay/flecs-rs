@@ -70,8 +70,11 @@ impl World {
     }
 
 	pub fn find_entity(&self, entity: EntityId) -> Option<Entity> {
-		// TODO: check that it exists!
-		Some(Entity::new(self.world, entity))
+		let entity = Entity::new(self.world, entity);
+		if entity.is_valid() {
+			return Some(entity);
+		}
+		None
 	}
 
 	pub fn lookup(&self, name: &str) -> Option<Entity> {
@@ -148,6 +151,22 @@ impl World {
 		let dest = unsafe { ecs_get_mut_id(self.world, entity.raw(), comp_id, &mut is_added) } ;
 		let dest = unsafe { (dest as *mut T).as_mut().unwrap() };
 		*dest = value;
+	}
+
+	pub fn set_component(&self, entity: EntityId, comp: EntityId, data: &[u8]) {
+		let info = get_component_info(self.world, comp).expect("Component type not registered!");
+		let mut is_added = false;
+		let dest = unsafe { 
+			let ptr = ecs_get_mut_id(self.world, entity, comp, &mut is_added) as *mut u8;
+			std::slice::from_raw_parts_mut(ptr, info.size as usize)
+		};
+
+		if data.len() == dest.len() {
+			dest.copy_from_slice(&data);
+		} else {
+			// return an error?
+			//warn!("set_component: component size mismatch. {} != {}", data.len(), dest.len());
+		}
 	}
 
 	pub fn read_component(&self, entity: EntityId, comp: EntityId) -> Option<&[u8]> {
