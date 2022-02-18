@@ -78,6 +78,21 @@ impl World {
 	}
 
 	pub fn lookup(&self, name: &str) -> Option<Entity> {
+		let name_c_str = std::ffi::CString::new(name).unwrap();
+		let sep = NAME_SEP.as_ptr() as *const i8;
+
+		let entity = unsafe { 
+			ecs_lookup_path_w_sep(self.world, 
+				0, 
+				name_c_str.as_ptr() as *const i8, 
+				sep, 
+				sep, true) 
+		};
+
+		if entity > 0 {
+			return Some(Entity::new(self.world, entity));
+		}
+
 		None
 	}
 
