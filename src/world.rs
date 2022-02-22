@@ -186,6 +186,12 @@ impl World {
 
 	pub fn read_component(&self, entity: EntityId, comp: EntityId) -> Option<&[u8]> {
 		let info = get_component_info(self.world, comp).expect("Component type not registered!");
+
+		let entity_valid = unsafe { ecs_is_valid(self.world, entity) };
+		if !entity_valid {
+			return None;
+		}
+
 		let src = unsafe { 
 			let ptr = ecs_get_id(self.world, entity, comp) as *const u8;
 			if ptr.is_null() {
