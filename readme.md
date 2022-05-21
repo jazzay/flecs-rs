@@ -99,9 +99,20 @@ Create a file called `index.html` under `static/`:
 </html>
 ```
 
+Emscripten Setup:
+A specific version of the [Emscripten SDK](https://emscripten.org/docs/getting_started/downloads.html) is required. Newer versions will usually cause build or runtime errors.
+```
+make setup_emsdk EMSDK=/your/install/directory
+```
+
+If needed, set standard library path:
+```
+export STDLIB=/usr/include
+```
+
 Build WASM binary:
 ```bash
-build --example systems --target wasm32-unknown-emscripten
+cargo build --example systems --target wasm32-unknown-emscripten
 cp ./target/wasm32-unknown-emscripten/debug/examples/systems.js ./static/
 cp ./target/wasm32-unknown-emscripten/debug/examples/systems.wasm ./static/
 ```
