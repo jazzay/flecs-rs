@@ -16,13 +16,10 @@ setup_emsdk:
 		cd `dirname $(EMSDK)` && \
 		git clone https://github.com/emscripten-core/emsdk.git $(EMSDK) && \
 		cd $(EMSDK) && \
-		git checkout tags/2.0.9 && \
+		git checkout tags/3.1.10 && \
 		echo "13e29bd55185e3c12802bc090b4507901856b2ba" > ./emscripten-releases-tot.txt && \
 		./emsdk install tot && \
 		./emsdk activate tot
-	# Install EMSDK hack
-	cp -n $(EMSDK)/upstream/emscripten/src/preamble.js $(EMSDK)/upstream/emscripten/src/preamble.js.backup || true
-	cp -f src/preamble.js $(EMSDK)/upstream/emscripten/src/preamble.js
 	# Add to PATH
 	source $(EMSDK)
 	sudo echo "source $(EMSDK)" >> ~/.bashrc
