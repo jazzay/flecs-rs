@@ -23,8 +23,6 @@ fn main() {
     let mut include_path = env::var("STDLIB").unwrap_or("/usr/include".to_string()).to_string();
     let include_flag = String::from("-I") + &include_path[..include_path.len()];
 
-    println!(include_flag);
-
     let bindings = bindgen::Builder::default()
         // The input header we would like to generate
         // bindings for.
