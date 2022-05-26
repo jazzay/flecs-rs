@@ -101,13 +101,27 @@ Create a file called `index.html` under `static/`:
 
 Emscripten Setup:
 A specific version of the [Emscripten SDK](https://emscripten.org/docs/getting_started/downloads.html) is required. Newer versions will usually cause build or runtime errors.
+
+On Mac you may need to make sure your Python3 SSL certs are setup:
+https://bugs.python.org/issue43404
+
 ```
 make setup_emsdk EMSDK=/your/install/directory
 ```
 
-If needed, set standard library path:
+If necessary, you can override the standard library path:
 ```
 export STDLIB=/usr/include
+```
+By default it uses the EMSDK's sysroot for includes.
+
+On some platforms you may get linker errors:
+
+https://stackoverflow.com/questions/67474533/error-in-compiling-rust-into-webassembly-using-emscripten-on-windows
+
+To avoid this run this prior to building: (TODO make this automatic)
+```bash
+emcc -c gxx_personality_v0_stub.cpp
 ```
 
 Build WASM binary:

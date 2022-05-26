@@ -20,8 +20,12 @@ fn main() {
     }
 
     // Standard library include path
-    let mut include_path = env::var("STDLIB").unwrap_or("/usr/include".to_string()).to_string();
+    // To support all platforms we should use the emsdk sysroot itself for the include path.
+    let emsdk = env::var("EMSDK").unwrap();
+    let emsdk_include_path = format!("{}/upstream/emscripten/cache/sysroot/include", emsdk);
+    let include_path = env::var("STDLIB").unwrap_or(emsdk_include_path.to_string()).to_string();
     let include_flag = String::from("-I") + &include_path[..include_path.len()];
+    println!("Used Include Path: {}", include_path);
 
     let bindings = bindgen::Builder::default()
         // The input header we would like to generate

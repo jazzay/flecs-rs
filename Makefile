@@ -21,6 +21,7 @@ setup_emsdk:
 		./emsdk install tot && \
 		./emsdk activate tot
 	# Add to PATH
-	source $(EMSDK)
-	sudo echo "source $(EMSDK)" >> ~/.bashrc
+	source $(EMSDK)/emsdk_env.sh
+	sudo echo "source $(EMSDK)/emsdk_env.sh" >> ~/.bashrc
+	sudo echo "source $(EMSDK)/emsdk_env.sh" >> ~/.zshrc
 	

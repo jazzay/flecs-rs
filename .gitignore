@@ -4,5 +4,9 @@ Cargo.lock
 .vscode
 flamegraph.svg
 
+*.o
+*.js
+*.wasm
+
 # don't bother submitting bindings file
 /src/bindings.rs

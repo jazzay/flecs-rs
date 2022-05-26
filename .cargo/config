@@ -1,0 +1,2 @@
+[build]
+rustflags = ["-C", "link-args=gxx_personality_v0_stub.o"]
