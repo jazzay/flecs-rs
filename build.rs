@@ -44,13 +44,20 @@ fn main() {
 		.expect("Unable to generate bindings");
 
 	// We generate bindings to an actual source file so that we get better IDE integration
-	let out_path = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+	// Sadly to publish on crates.io we cannot write outside the OUT_DIR revisit this later.
+	// let out_path = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+	// bindings
+	// 	.write_to_file(out_path.join("src/bindings.rs"))
+	// 	.expect("Couldn't write bindings!");
+
+	let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
 	bindings
-		.write_to_file(out_path.join("src/bindings.rs"))
+		.write_to_file(out_path.join("bindings.rs"))
 		.expect("Couldn't write bindings!");
 
 	// Compile flecs C right into our Rust crate
 	cc::Build::new()
 		.file("flecs.c")
-		.compile("flecs");		
+		.compile("flecs");	
+
 }
