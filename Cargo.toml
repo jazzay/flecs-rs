@@ -2,6 +2,12 @@
 name = "flecs"
 version = "0.1.0"
 edition = "2021"
+description = "Rust bindings for the Flecs Entity Component System"
+homepage = "https://www.flecs.dev"
+repository = "https://github.com/jazzay/flecs-rs"
+license = "MIT"
+keywords = ["ecs", "game", "flecs"]
+categories = ["game-engines", "data-structures"]
 
 [profile.release]
 debug = true
