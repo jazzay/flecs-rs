@@ -60,13 +60,7 @@ pub struct SystemBuilder<'c, G: ComponentGroup<'c>> {
 impl<'c, G: ComponentGroup<'c>> SystemBuilder<'c, G> {
 	pub(crate) fn new(world: &'c World) -> Self {
 		let world_raw = world.raw();
-		let mut desc = ecs_system_desc_t::default();
-
-		// m_desc.entity.name = name;
-		desc.entity.sep = NAME_SEP.as_ptr() as *const i8;
-		desc.entity.add[0] = unsafe { EcsOnUpdate };
-		// m_desc.query.filter.expr = expr;
-		// this->populate_filter_from_pack();
+		let desc = ecs_system_desc_t::default();
 
 		SystemBuilder {
 			world,
@@ -93,10 +87,11 @@ impl<'c, G: ComponentGroup<'c>> SystemBuilder<'c, G> {
     }
 
 	/** Associate system with entity */
-	pub fn entity(mut self, entity: Entity) -> Self {
-		self.desc.self_ = entity.raw();
-		self
-	}
+	// TODO - Don't create an entity then in this case (v3.0 change)
+	// pub fn entity(mut self, entity: Entity) -> Self {
+	// 	self.desc.entity = entity.raw();
+	// 	self
+	// }
 	
     /** Set system context */
     pub(crate) fn ctx(mut self, ctx: *mut ::std::os::raw::c_void) -> Self {
@@ -106,17 +101,25 @@ impl<'c, G: ComponentGroup<'c>> SystemBuilder<'c, G> {
 
 	// Build APIs, the 2 variants call the internal build()
 	fn build(&mut self) -> ecs_entity_t {
-		let world_raw = self.world.raw();
+		let world = self.world.raw();
 		let e: ecs_entity_t;
 
 		let name_c_str = std::ffi::CString::new(self.name_temp.as_str()).unwrap();
 
+		let mut entity_desc: ecs_entity_desc_t = unsafe { MaybeUninit::zeroed().assume_init() };
+
 		if self.name_temp.len() > 0 {
-			self.desc.entity.name = name_c_str.as_ptr() as *const i8;
+			entity_desc.name = name_c_str.as_ptr() as *const i8;
 		} else {
 			// We must pass Null to flecs instead of "" otherwise bad stuff happens!
-			self.desc.entity.name = std::ptr::null()
+			entity_desc.name = std::ptr::null()
 		}
+
+		// We have to add this pair so that the system is part of standard progress stage
+		entity_desc.add[0] = unsafe { ecs_pair(EcsDependsOn, EcsOnUpdate) };
+
+		// create a system entity
+		self.desc.entity = unsafe { ecs_entity_init(world, &entity_desc) };
 
 		let expr_c_str = std::ffi::CString::new(self.expr_temp.as_str()).unwrap();
 		if self.expr_temp.len() > 0 {
@@ -125,6 +128,8 @@ impl<'c, G: ComponentGroup<'c>> SystemBuilder<'c, G> {
 			// we should infer some filter state from the <(A, B)> generic signature
 		}
 
+		// TODO: Copied from Flecs C++. Cleanup soon!!
+		//
         // entity_t e, kind = m_desc.entity.add[0];
         // bool is_trigger = kind == flecs::OnAdd || kind == flecs::OnRemove;
 
@@ -155,7 +160,7 @@ impl<'c, G: ComponentGroup<'c>> SystemBuilder<'c, G> {
             // desc.binding_ctx = ctx;
             // desc.binding_ctx_free = reinterpret_cast<ecs_ctx_free_t>(_::free_obj<Invoker>);
 
-			e = unsafe { ecs_system_init(world_raw, &self.desc) };
+			e = unsafe { ecs_system_init(world, &self.desc) };
         }
 
         // if (this->m_desc.query.filter.terms_buffer) {
@@ -180,7 +185,7 @@ impl<'c, G: ComponentGroup<'c>> SystemBuilder<'c, G> {
 		let trampoline = get_trampoline(&closure);
 
 		self.desc.callback = Some(trampoline);
-		self = self.ctx(&mut closure as *mut _ as *mut c_void);
+		self.desc.binding_ctx = &mut closure as *mut _ as *mut c_void;
 
 		let e = Self::build(&mut self);
 		System::new(self.world.raw(), e)		
@@ -201,7 +206,7 @@ impl<'c, G: ComponentGroup<'c>> SystemBuilder<'c, G> {
 		let trampoline = get_trampoline(&closure);
 
 		self.desc.callback = Some(trampoline);
-		self = self.ctx(&mut closure as *mut _ as *mut c_void);
+		self.desc.binding_ctx = &mut closure as *mut _ as *mut c_void;
 
 		let e = Self::build(&mut self);
 		System::new(self.world.raw(), e)		
@@ -217,7 +222,7 @@ impl<'c, G: ComponentGroup<'c>> SystemBuilder<'c, G> {
 		let trampoline = get_trampoline(&closure);
 
 		self.desc.callback = Some(trampoline);
-		self = self.ctx(&mut closure as *mut _ as *mut c_void);
+		self.desc.binding_ctx = &mut closure as *mut _ as *mut c_void;
 
 		let e = Self::build(&mut self);
 		System::new(self.world.raw(), e)
@@ -275,17 +280,17 @@ impl Iter {
 		Entity::new(unsafe { (*self.it).world }, *entity)
     }
 
-    pub fn term<A: Component>(&self, index: i32) -> Column<A> {
-        Self::get_term::<A>(self, index)
+    pub fn field<A: Component>(&self, index: i32) -> Column<A> {
+        Self::get_field::<A>(self, index)
     }
 
-    fn get_term<T: Component>(&self, index: i32) -> Column<T> {
+    fn get_field<T: Component>(&self, index: i32) -> Column<T> {
 			// validate that types match. could avoid this in Release builds perhaps to get max perf
-			let term_id = unsafe { ecs_term_id(self.it, index) };
+			let field_id = unsafe { ecs_field_id(self.it, index) };
 			let world = unsafe { (*self.it).real_world };	// must use real to get component infos
 			let comp_id = WorldInfoCache::get_component_id_for_type::<T>(world).expect("Component type not registered!");
 			// println!("Term: {}, Comp: {}", term_id, comp_id);
-			assert!(term_id == comp_id);
+			assert!(field_id == comp_id);
 
 			/* TODO - validate that the types actually match!!!!
 	#ifndef NDEBUG
@@ -298,7 +303,7 @@ impl Iter {
 
 			let mut count = self.count();
 
-			let is_shared = unsafe { !ecs_term_is_owned2(self.it, index) };
+			let is_shared = unsafe { !ecs_field_is_self(self.it, index) };
 
 			/* If a shared column is retrieved with 'column', there will only be a
 				* single value. Ensure that the application does not accidentally read
@@ -309,28 +314,29 @@ impl Iter {
 			// println!("Term: {}, is_shared: {}, count: {}", term_id, is_shared, count);
 
 			let size = std::mem::size_of::<T>();
-			let array = unsafe { ecs_term_w_size(self.it, size as size_t, index) as *mut T };
+			let array = unsafe { ecs_field_w_size(self.it, size as size_t, index) as *mut T };
 
 			Column::new(array, count, is_shared)
     }
 
     pub fn get_term_dynamic(&self, index: i32) -> ColumnDynamic {
 			let mut count = self.count();
-			let is_shared = unsafe { !ecs_term_is_owned2(self.it, index) };
+
+			let is_shared = unsafe { !ecs_field_is_self(self.it, index) };
 			if is_shared {
 				count = 1;
 			}
 
 			// TODO: look this up within the component info
 			let world = unsafe { (*self.it).real_world };
-				let term_id = unsafe { ecs_term_id(self.it, index) };
+				let term_id = unsafe { ecs_field_id(self.it, index) };
 
 			let mut size = 0;	// we only get a size if there is a component?
 			if let Some(info) = get_component_info(world, term_id) {
 			size = info.size;
 			}
 
-			let array = unsafe { ecs_term_w_size(self.it, size as size_t, index) as *mut u8 };
+			let array = unsafe { ecs_field_w_size(self.it, size as size_t, index) as *mut u8 };
 
 			ColumnDynamic::new(array, count, size as usize, is_shared)
     }	
@@ -346,13 +352,12 @@ where
 		return;
 	}
 
-	let ctx = (*it).ctx;
-	if ctx.is_null() {
+	let func_ptr = (*it).binding_ctx;
+	if func_ptr.is_null() {
 		return;
 	}
 
-	let user_data = (*it).ctx;
-    let func = &mut *(user_data as *mut F);
+    let func = &mut *(func_ptr as *mut F);
     func(it);
 }
 

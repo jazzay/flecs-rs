@@ -5,10 +5,7 @@ use crate::cache::WorldInfoCache;
 //
 pub struct Filter {
 	world: *mut ecs_world_t,
-
-	// this has to be on heap due to self-ref fields
-	// todo: could look at using Pin or some other stack based strategy
-	filter: Box<ecs_filter_t>,	
+	filter: *mut ecs_filter_t,	
 }
 
 // TODO - need to support generalized API via tuples or something
@@ -19,19 +16,15 @@ impl Filter {
 		// TODO: add batch type lookup!
 		desc.terms[0].id = WorldInfoCache::get_component_id_for_type::<A>(world).expect("Component type not registered!");
 
-		let filter: ecs_filter_t = unsafe { MaybeUninit::zeroed().assume_init() };
-		let mut filter = Box::new(filter);
-
-		unsafe { ecs_filter_init(world, filter.as_mut(), &desc) };
+		let filter = unsafe { ecs_filter_init(world, &desc) };
 		Filter { world, filter }
 	}
 
 	pub fn each_1<A: Component>(&self, mut cb: impl FnMut(Entity, &A)) {
-		let f = &self.filter;
 		unsafe {
-			let mut it = ecs_filter_iter(self.world, f.as_ref());
+			let mut it = ecs_filter_iter(self.world, self.filter);
 			while ecs_filter_next(&mut it) {
-				let a = ecs_term::<A>(&it, 1);
+				let a = ecs_field::<A>(&it, 1);
 				for i in 0..it.count {
                     let eid = it.entities.offset(i as isize).as_ref().unwrap();
                     let e = Entity::new(self.world, *eid);
@@ -47,11 +40,7 @@ impl Filter {
 
 pub struct FilterGroup<'c, G: ComponentGroup<'c>> {
 	world: &'c World,
-
-	// this has to be on heap due to self-ref fields
-	// todo: could look at using Pin or some other stack based strategy
-	filter: Box<ecs_filter_t>,	
-
+	filter: *mut ecs_filter_t,
 	_phantom: std::marker::PhantomData<G>,
 }
 
@@ -62,10 +51,7 @@ impl<'c, G: ComponentGroup<'c>> FilterGroup<'c, G> {
 		let mut desc: ecs_filter_desc_t = unsafe { MaybeUninit::zeroed().assume_init() };
 		unsafe { G::fill_descriptor(world_raw, &mut desc) };
 
-		let filter: ecs_filter_t = unsafe { MaybeUninit::zeroed().assume_init() };
-		let mut filter = Box::new(filter);
-
-		unsafe { ecs_filter_init(world_raw, filter.as_mut(), &desc) };
+		let filter = unsafe { ecs_filter_init(world_raw, &desc) };
 		FilterGroup { 
 			world, 
 			filter,
@@ -75,10 +61,9 @@ impl<'c, G: ComponentGroup<'c>> FilterGroup<'c, G> {
 
 	pub fn each(&self, mut cb: impl FnMut(Entity, G::RefTuple)) {
 		let world_raw = self.world.raw();
-		let f = &self.filter;
 		// println!("each - filter: {}, {}, {}", f.term_cache_used, f.terms as u64, f.term_cache.as_ptr() as u64);
 		unsafe {
-			let mut it = ecs_filter_iter(world_raw, f.as_ref());
+			let mut it = ecs_filter_iter(world_raw, self.filter);
 			while ecs_filter_next(&mut it) {
 				// Iterate all entities for the type
 				for i in 0..it.count {
@@ -93,10 +78,9 @@ impl<'c, G: ComponentGroup<'c>> FilterGroup<'c, G> {
 
 	pub fn each_mut(&self, mut cb: impl FnMut(Entity, G::MutRefTuple)) {
 		let world_raw = self.world.raw();
-		let f = &self.filter;
 		// println!("each_mut - filter: {}, {}, {}", f.term_cache_used, f.terms as u64, f.term_cache.as_ptr() as u64);
 		unsafe {
-			let mut it = ecs_filter_iter(world_raw, f.as_ref());
+			let mut it = ecs_filter_iter(world_raw, self.filter);
 			while ecs_filter_next(&mut it) {
 				// Iterate all entities for the type
 				for i in 0..it.count {

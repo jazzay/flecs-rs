@@ -61,13 +61,13 @@ fn main() {
             .add::<Planet>()
             .set::<Position>(Position { x: 3.0, y: 3.0 });
 
-            let moon = world.entity().named("Moon")
+            let moon = world.entity().named("MoonE")
                 .child_of(earth)
                 .add::<Moon>()
                 .set::<Position>(Position { x: 0.1, y: 0.1 });
 
     // Is the Moon a child of Earth?
-    println!("Child of Earth? {}", moon.has_child(earth));
+    println!("Child of Earth? {}", moon.is_child_of(earth));
 
     // Do a depth-first walk of the tree
     iterate_tree(sun, Position::default());

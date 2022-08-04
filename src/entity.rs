@@ -134,8 +134,8 @@ impl Entity {
         unsafe { ecs_has_id(self.world, self.entity, pair) }
     }
 
-    pub fn has_child<T: AsEcsId>(self, child: T) -> bool {
-        let pair = unsafe { ecs_make_pair(EcsChildOf, child.id()) };
+    pub fn is_child_of<T: AsEcsId>(self, parent: T) -> bool {
+        let pair = unsafe { ecs_make_pair(EcsChildOf, parent.id()) };
         unsafe { ecs_has_id(self.world, self.entity, pair) }
     }
 
@@ -152,8 +152,7 @@ impl Entity {
 
     pub fn get_mut<T: Component>(&mut self) -> &mut T  {
 		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
-		let mut is_added = false;
-		let value = unsafe { ecs_get_mut_id(self.world, self.entity, comp_id, &mut is_added) };
+		let value = unsafe { ecs_get_mut_id(self.world, self.entity, comp_id) };
 		unsafe { (value as *mut T).as_mut().unwrap() }
     }
 
@@ -184,8 +183,7 @@ impl Entity {
 	// Added to assess performance impact of Type lookup within Benchmarks
     pub fn set_fast<T: Component>(&self, comp_id: u64, value: T)  {
 		// let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
-		let mut is_added = false;
-		let ptr = unsafe { ecs_get_mut_id(self.world, self.entity, comp_id, &mut is_added) };
+		let ptr = unsafe { ecs_get_mut_id(self.world, self.entity, comp_id) };
 		let dest = unsafe { (ptr as *mut T).as_mut().unwrap() };
 		*dest = value;
     }
@@ -219,8 +217,7 @@ impl Entity {
 	//
     fn get_mut_dynamic(&mut self, symbol: &'static str) -> &mut [u8]  {
 		let comp_info = WorldInfoCache::get_component_id_for_symbol(self.world, symbol).unwrap();
-		let mut is_added = false;
-		let value = unsafe { ecs_get_mut_id(self.world, self.entity, comp_info.id, &mut is_added) };
+		let value = unsafe { ecs_get_mut_id(self.world, self.entity, comp_info.id) };
 		unsafe { 
 			let ptr = value as *mut u8;
 			let len = comp_info.size;
@@ -248,34 +245,27 @@ impl Entity {
 
 	pub fn each(&self, mut cb: impl FnMut(Id)) {
 		unsafe {
-			let e_type = ecs_get_type(self.world, self.entity);
-			if e_type.is_null() {
-				return;
-			}
-		
-			// let elem_size = std::mem::size_of::<ecs_id_t>() as i32;
-			// let elem_align = std::mem::align_of::<ecs_id_t>() as i16;
-
-			let ids = ecs_vector_first::<ecs_id_t>(e_type);
-			let count = ecs_vector_count(e_type);
-
-			//println!("got {} ids. size: {}, align: {}", count, elem_size, elem_align);
-			let ids = slice_from_raw_parts(ids, count as usize).as_ref().unwrap();
+			let e_type: *const ecs_type_t = ecs_get_type(self.world, self.entity);
+			if let Some(ty) = e_type.as_ref() {
+				//println!("got {} ids. size: {}, align: {}", count, elem_size, elem_align);
+				let ids = slice_from_raw_parts(ty.array, ty.count as usize).as_ref().unwrap();
+				
+				for id in ids {
+					//let id = ids[i];
+					let id = Id::new(self.world, *id);
+					cb(id); 
 			
-			for id in ids {
-				//let id = ids[i];
-				let id = Id::new(self.world, *id);
-				cb(id); 
-		
-				// TODO: Handle this soon!
-				// Case is not stored in type, so handle separately
-				// if ((id & ECS_ROLE_MASK) == flecs::Switch) {
-				// 	ent = flecs::id(
-				// 		m_world, flecs::Case | ecs_get_case(
-				// 				m_world, m_id, ent.object().id()));
-				// 	func(ent);
-				// }
+					// TODO: Handle this soon!
+					// Case is not stored in type, so handle separately
+					// if ((id & ECS_ROLE_MASK) == flecs::Switch) {
+					// 	ent = flecs::id(
+					// 		m_world, flecs::Case | ecs_get_case(
+					// 				m_world, m_id, ent.object().id()));
+					// 	func(ent);
+					// }
+				}
 			}
+
 		}
 	}
 
@@ -286,10 +276,9 @@ impl Entity {
 			desc.terms[1].id = EcsPrefab;
 			desc.terms[1].oper = ecs_oper_kind_t_EcsOptional;
 
-			let mut filter: ecs_filter_t = MaybeUninit::zeroed().assume_init();
-			ecs_filter_init(self.world, &mut filter, &desc);
+			let filter = ecs_filter_init(self.world, &desc);
 
-			let mut it = ecs_filter_iter(self.world, &filter);
+			let mut it = ecs_filter_iter(self.world, filter);
 			while ecs_filter_next(&mut it) {
 				for i in 0..it.count {
                     let eid = it.entities.offset(i as isize).as_ref().unwrap();

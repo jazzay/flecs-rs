@@ -49,12 +49,12 @@ impl<'c, T: Component + SealedComponentGroup> ComponentGroup<'c> for T {
     }
 
     unsafe fn iter_as_ref_tuple(it: &ecs_iter_t, i: isize) -> Self::RefTuple {
-        let v = ecs_term::<T>(it, 1).offset(i as isize).as_ref().unwrap();
+        let v = ecs_field::<T>(it, 1).offset(i as isize).as_ref().unwrap();
         &*(v)
     }
 
     unsafe fn iter_as_mut_tuple(it: &ecs_iter_t, i: isize) -> Self::MutRefTuple {
-        let v = ecs_term::<T>(it, 1).offset(i as isize).as_mut().unwrap();
+        let v = ecs_field::<T>(it, 1).offset(i as isize).as_mut().unwrap();
         &mut *(v)
     }
 }
@@ -76,13 +76,13 @@ macro_rules! impl_component_tuple {
             // We should be able to split this into 2 phase to gain performance (ecs_term, and the offset maths on raw ptr)
             unsafe fn iter_as_ref_tuple(it: &ecs_iter_t, i: isize) -> Self::RefTuple {
                 ($(
-                    &*((ecs_term::<$elem>(it, $elem_idx + 1)) as *mut $elem).offset(i as isize).as_ref().unwrap(),
+                    &*((ecs_field::<$elem>(it, $elem_idx + 1)) as *mut $elem).offset(i as isize).as_ref().unwrap(),
                 )*)
             }
 
             unsafe fn iter_as_mut_tuple(it: &ecs_iter_t, i: isize) -> Self::MutRefTuple {
                 ($(
-                    &mut *((ecs_term::<$elem>(it, $elem_idx + 1)) as *mut $elem).offset(i as isize).as_mut().unwrap(),
+                    &mut *((ecs_field::<$elem>(it, $elem_idx + 1)) as *mut $elem).offset(i as isize).as_mut().unwrap(),
                 )*)
             }
         }

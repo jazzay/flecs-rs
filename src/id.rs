@@ -13,10 +13,15 @@ impl AsEcsId for Id {
 }
 
 // Bindgen creates i64 for some large ull :(
-const RUST_ECS_ROLE_MASK: u64 = 0xFF << 56;	// (ECS_ROLE_MASK as u64)
+const RUST_ECS_ID_FLAGS_MASK: u64 = ECS_ID_FLAGS_MASK as u64;
 
 fn ecs_entity_t_lo(value: u64) -> u32 { value as u32 }
 fn ecs_entity_t_hi(value: u64) -> u32 { (value >> 32) as u32 }
+fn ecs_entity_t_comb(lo: u64, hi: u64) -> u64 { (hi << 32) + lo }
+
+pub fn ecs_pair(pred: u64, obj: u64) -> u64 {
+	unsafe { ECS_PAIR | ecs_entity_t_comb(obj, pred) }
+}
 
 fn ecs_pair_relation(e: u64) -> u64 {
 	(ecs_entity_t_hi(e & ECS_COMPONENT_MASK)) as u64
@@ -25,6 +30,15 @@ fn ecs_pair_relation(e: u64) -> u64 {
 fn ecs_pair_object(e: u64) -> u64 {
 	(ecs_entity_t_lo(e)) as u64
 }
+
+/* TODO: Review these macro like functions again since v3.0
+/* Get object from pair with the correct (current) generation count */
+#define ecs_pair_first(world, pair) ecs_get_alive(world, ECS_PAIR_FIRST(pair))
+#define ecs_pair_second(world, pair) ecs_get_alive(world, ECS_PAIR_SECOND(pair))
+#define ecs_pair_relation ecs_pair_first
+#define ecs_pair_object ecs_pair_second
+*/
+
 
 impl Id {
 	pub(crate) fn new(world: *mut ecs_world_t, id: ecs_id_t) -> Self {
@@ -36,7 +50,7 @@ impl Id {
 	}
 
 	pub fn is_pair(&self) -> bool {
-		unsafe { (self.id & RUST_ECS_ROLE_MASK) == ECS_PAIR }
+		unsafe { (self.id & RUST_ECS_ID_FLAGS_MASK) == ECS_PAIR }
 	}
 
     /* Test if id is a wildcard */
@@ -46,7 +60,7 @@ impl Id {
 
 	pub fn entity(&self) -> Entity {
 		assert!(!self.is_pair());
-		assert!(!self.has_role());
+		assert!(!self.has_flags());
 		Entity::new(self.world, self.id)
 	}
 	
@@ -73,13 +87,12 @@ impl Id {
 	}
 	
     /* Test if id has any role */
-    pub fn has_role(&self) -> bool {
-		assert!(RUST_ECS_ROLE_MASK == (ECS_ROLE_MASK as u64));
-        return (self.id & RUST_ECS_ROLE_MASK) != 0;
+    pub fn has_flags(&self) -> bool {
+        return (self.id & RUST_ECS_ID_FLAGS_MASK) != 0;
     }
 
-    pub fn role(&self) -> Id {
-		Id::new(self.world, self.id & (ECS_ROLE_MASK as u64))
+    pub fn flags(&self) -> Entity {
+		Entity::new(self.world, self.id & RUST_ECS_ID_FLAGS_MASK)
 	}
 
 	// from base id type, which don't exist in rust
@@ -88,8 +101,4 @@ impl Id {
 		unsafe { flecs_to_rust_str(id_str) }
     }
 
-    pub fn role_str(&self) -> &str {
-		let role_str = unsafe { ecs_role_str(self.id & (ECS_ROLE_MASK as u64)) };
-		unsafe { flecs_to_rust_str(role_str) }
-    }
 }

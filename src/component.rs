@@ -91,41 +91,38 @@ pub struct ComponentDescriptor {
 pub fn register_component(world: *mut ecs_world_t, desc: ComponentDescriptor) -> ecs_entity_t {
 	// println!("register_component - {:?}", desc);
 
-	let mut e_desc: ecs_entity_desc_t = unsafe { MaybeUninit::zeroed().assume_init() };
 	let name_c_str = std::ffi::CString::new(desc.name).unwrap();
 	let symbol_c_str = std::ffi::CString::new(desc.symbol).unwrap();
 
 	// could be a const
 	let sep = std::ffi::CString::new("::").unwrap();
 
+	let mut entity_desc: ecs_entity_desc_t = unsafe { MaybeUninit::zeroed().assume_init() };
 	if let Some(custom_id) = desc.custom_id {
-		e_desc.entity = custom_id;
-	} else {
-		e_desc.entity = 0;	// undefined, so create new
+		entity_desc.id = custom_id;
 	}
 
 	// For now these are the same as the T::name is passed in
-	e_desc.name = name_c_str.as_ptr() as *const i8;
-	e_desc.symbol = symbol_c_str.as_ptr() as *const i8;
+	entity_desc.name = name_c_str.as_ptr() as *const i8;
+	entity_desc.symbol = symbol_c_str.as_ptr() as *const i8;
 
-	e_desc.sep = sep.as_ptr() as *const i8;
-	e_desc.root_sep = sep.as_ptr() as *const i8;
-	
-	// let s_id = 0;
-	let comp_desc = ecs_component_desc_t {
-		_canary: 0,
-		entity: e_desc,
-		size: desc.layout.size() as size_t,
-		alignment: desc.layout.align() as size_t,
-	};
+	entity_desc.sep = sep.as_ptr() as *const i8;
+	entity_desc.root_sep = sep.as_ptr() as *const i8;
 
+    let entity = unsafe { ecs_entity_init(world, &entity_desc) };
 
-	let comp_entity = unsafe { ecs_component_init(world, &comp_desc) };
-	// println!("register_component - comp_entity {}", comp_entity);
+	// only register a ecs component if size > 0
+	if desc.layout.size() > 0 {
+		let mut comp_desc: ecs_component_desc_t = unsafe { MaybeUninit::zeroed().assume_init() };
+		comp_desc.entity = entity;
+		comp_desc.type_.size = desc.layout.size() as ecs_size_t;
+		comp_desc.type_.alignment = desc.layout.align() as ecs_size_t;
 
-	if let Some(custom_id) = desc.custom_id {
-		assert!(comp_entity == custom_id);
+		let comp_entity = unsafe { ecs_component_init(world, &comp_desc) };
+		assert!(comp_entity == entity);
 	}
 
-	comp_entity
+	// println!("register_component - entity {}", entity);
+
+	entity
 }

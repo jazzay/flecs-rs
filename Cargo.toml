@@ -47,3 +47,11 @@ test = true
 [[example]]
 name="systems"
 test = true
+
+[[example]]
+name="systems_basics"
+path = "examples/systems/basics.rs"
+
+[[example]]
+name="systems_delta_time"
+path = "examples/systems/delta_time.rs"

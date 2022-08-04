@@ -37,10 +37,6 @@ fn iterate_components(e: Entity) {
     i = 0;
     e.each(|id| {
 
-        if id.has_role() {
-            print!("{}: role: {}, ", i, id.role().role_str());
-        }
-
         if id.is_pair() {
             // If id is a pair, extract & print both parts of the pair
             let rel = id.relation();

@@ -8,6 +8,8 @@ run-examples:
 	cargo run --example filters
 	cargo run --example hello_world
 	cargo run --example systems
+	cargo run --example systems_basics
+	cargo run --example systems_delta_time
 setup_emsdk:
 	# Way to dangerous to automatically delete a directory, imagine if user set /
 	@if [ -d $(EMSDK) ]; then echo "emsdk '$(EMSDK)' directory already exist, please delete-it manually"; exit 1; fi

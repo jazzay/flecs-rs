@@ -37,8 +37,8 @@ fn create_some_entities(world: &mut World, count: usize) {
 fn system_with_iter(it: &Iter) {
 	println!("system_with_iter: entities = {}", it.count());
 
-	let positions = it.term::<Position>(1);
-	let vels = it.term::<Velocity>(2);
+	let positions = it.field::<Position>(1);
+	let vels = it.field::<Velocity>(2);
 
 	for index in 0..it.count() {
 		let pos = positions.get(index);
@@ -86,9 +86,9 @@ fn main() {
 		.expr("Position, Velocity")
 		.iter(system_with_iter);
 
-	for _ in 0..5 {
-		world.progress(0.033);
-	}
+		for _ in 0..5 {
+			world.progress(0.033);
+		}
 }
 
 // We can also run these within tests. Need to figure out best org
