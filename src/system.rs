@@ -319,7 +319,7 @@ impl Iter {
 			Column::new(array, count, is_shared)
     }
 
-    pub fn get_term_dynamic(&self, index: i32) -> ColumnDynamic {
+    pub fn field_dynamic(&self, index: i32) -> ColumnDynamic {
 			let mut count = self.count();
 
 			let is_shared = unsafe { !ecs_field_is_self(self.it, index) };

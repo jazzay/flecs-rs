@@ -17,18 +17,18 @@ fn run_data_example(count: i32) {
 	world.component_named::<Position>("Position");
 	world.component_dynamic(DATA, Layout::new::<DataValue>());
 
-	for _ in 0..count {
+	for i in 0..count {
 		world.entity()
 			.set(Position::default())
-			.set_dynamic(DATA, &[8; 6]);
+			.set_dynamic(DATA, &[i as u8; 6]);
 	}
 
-	/* Dynamic component systems broken with latest API changes
-	world.system::<(Position, _)>().named("DynamicSystem")
-		.signature("Position, test.Data")
+	// Can create a system that can iterate dynamic components
+	world.system_dynamic().named("DynamicSystem")
+		.expr("Position, test.Data")
 		.iter(|it| {
-			let positions = it.term::<Position>(1);
-			let datas = it.get_term_dynamic(2);
+			let positions = it.field::<Position>(1);
+			let datas = it.field_dynamic(2);
 
 			println!("Dynamic System results:");
 			for index in 0..it.count() {
@@ -38,7 +38,6 @@ fn run_data_example(count: i32) {
 			}
 		
 		});
-	*/
 	
 	world.progress(0.0333);
 }
