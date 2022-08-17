@@ -263,6 +263,11 @@ impl World {
         filter
     }	
 
+	pub fn filter_builder(& self) -> FilterBuilder {
+		let filter_builder = FilterBuilder::new(self);
+        filter_builder
+    }	
+
 	// Iterate through all entities matching 1 component
 	pub fn each1<A: Component>(&self, mut cb: impl FnMut(Entity, &A)) {
 		let filter = Filter::new_1::<A>(self.raw());

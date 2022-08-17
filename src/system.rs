@@ -239,7 +239,7 @@ pub struct Iter {
 }
 
 impl Iter {
-	fn new(it: *mut ecs_iter_t) -> Self {
+	pub (crate) fn new(it: *mut ecs_iter_t) -> Self {
 		Iter {
 			it,
 			begin: 0,

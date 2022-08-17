@@ -35,8 +35,57 @@ impl Filter {
 		}		
 	}
 
+	pub fn iter<F: FnMut(&Iter)>(&self, mut func: F) {
+		unsafe {
+			let mut it = ecs_filter_iter(self.world, self.filter);
+			while ecs_filter_next(&mut it) {
+				let iter = Iter::new(&mut it);
+				func(&iter);
+			}
+		}				
+	}
+
 }
 
+pub struct FilterBuilder<'w> {
+	world: &'w World,
+	desc: ecs_filter_desc_t,
+	next_term_index: usize,
+}
+
+impl<'w> FilterBuilder<'w> {
+	pub fn new(world: &'w World) -> Self {
+		Self { 
+			world,
+			desc: unsafe { MaybeUninit::zeroed().assume_init() },
+			next_term_index: 0
+		}
+	}
+
+	pub fn term<A: Component>(mut self) -> Self {
+		let world_raw = self.world.raw();
+		self.desc.terms[self.next_term_index].id = WorldInfoCache::get_component_id_for_type::<A>(world_raw)
+			.expect("Component type not registered!");
+
+		self.next_term_index += 1;
+		self
+	}
+
+	pub fn term_dynamic(mut self, comp_id: EntityId) -> Self {
+		// TODO - validate that the comp_id passed is valid
+		self.desc.terms[self.next_term_index].id = comp_id;
+		self.next_term_index += 1;
+		self
+	}
+
+	pub fn build(self) -> Filter {
+		let filter = unsafe { ecs_filter_init(self.world.raw(), &self.desc) };
+		Filter { 
+			world: self.world.raw(), 
+			filter 
+		}
+	}
+}
 
 pub struct FilterGroup<'c, G: ComponentGroup<'c>> {
 	world: &'c World,
