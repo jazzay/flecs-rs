@@ -46,19 +46,33 @@ impl System {
 	}
 }
 
-pub struct SystemBuilder<'c, G: ComponentGroup<'c>> {
-	world: &'c World,
+pub struct SystemBuilder<'w> {
+	world: &'w World,
 	desc: ecs_system_desc_t,
 
 	// we need to keep these in memory until after build
 	name_temp: String,	
 	expr_temp: String,	
 
-	_phantom: std::marker::PhantomData<G>,
+	next_term_index: usize,
 }
 
-impl<'c, G: ComponentGroup<'c>> SystemBuilder<'c, G> {
-	pub(crate) fn new(world: &'c World) -> Self {
+impl<'w> TermBuilder for SystemBuilder<'w> {
+    fn world(&mut self) -> *mut ecs_world_t {
+        self.world.raw()
+    }
+
+    fn current_term(&mut self) -> &mut ecs_term_t {
+        &mut self.desc.query.filter.terms[self.next_term_index]
+    }
+
+    fn next_term(&mut self) {
+        self.next_term_index += 1;
+    }
+}
+
+impl<'w> SystemBuilder<'w> {
+	pub(crate) fn new(world: &'w World) -> Self {
 		let world_raw = world.raw();
 		let desc = ecs_system_desc_t::default();
 
@@ -67,7 +81,7 @@ impl<'c, G: ComponentGroup<'c>> SystemBuilder<'c, G> {
 			desc,
 			name_temp: "".to_owned(),
 			expr_temp: "".to_owned(),
-			_phantom: Default::default(),
+			next_term_index: 0,
 		}
 	}
 
@@ -170,7 +184,7 @@ impl<'c, G: ComponentGroup<'c>> SystemBuilder<'c, G> {
         e
 	}
 
-	pub fn each(mut self, mut cb: impl FnMut(Entity, G::RefTuple)) -> System {
+	pub fn each<G: ComponentGroup<'w>>(mut self, mut cb: impl FnMut(Entity, G::RefTuple)) -> System {
 		let mut closure = |it: *mut ecs_iter_t| {
 			unsafe {
 				let it = &(*it);
@@ -191,7 +205,7 @@ impl<'c, G: ComponentGroup<'c>> SystemBuilder<'c, G> {
 		System::new(self.world.raw(), e)		
 	}
 
-	pub fn each_mut(mut self, mut cb: impl FnMut(Entity, G::MutRefTuple)) -> System {
+	pub fn each_mut<G: ComponentGroup<'w>>(mut self, mut cb: impl FnMut(Entity, G::MutRefTuple)) -> System {
 		let mut closure = |it: *mut ecs_iter_t| {
 			unsafe {
 				let it = &(*it);

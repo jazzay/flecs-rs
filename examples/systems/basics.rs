@@ -18,9 +18,9 @@ fn main() {
 	world.component::<Velocity>();
 
 	// Can wire a function into a system
-	let system = world.system::<(Position, Velocity)>()
+	let system = world.system()
 		.expr("Position, Velocity")
-		.each_mut(|e, (p, v)| {
+		.each_mut::<(Position, Velocity)>(|e, (p, v)| {
             p.x += v.x;
             p.y += v.y;
 			println!("{}: {:?}, {:?}", e.name(), p, v);

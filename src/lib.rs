@@ -46,8 +46,14 @@ pub use filter::*;
 pub mod id;
 pub use id::*;
 
+pub mod query;
+pub use query::*;
+
 pub mod system;
 pub use system::*;
+
+pub mod terms;
+pub use terms::*;
 
 pub mod world;
 pub use world::*;

@@ -53,6 +53,20 @@ pub struct FilterBuilder<'w> {
 	next_term_index: usize,
 }
 
+impl<'w> TermBuilder for FilterBuilder<'w> {
+    fn world(&mut self) -> *mut ecs_world_t {
+        self.world.raw()
+    }
+
+    fn current_term(&mut self) -> &mut ecs_term_t {
+        &mut self.desc.terms[self.next_term_index]
+    }
+
+    fn next_term(&mut self) {
+        self.next_term_index += 1;
+    }
+}
+
 impl<'w> FilterBuilder<'w> {
 	pub fn new(world: &'w World) -> Self {
 		Self { 
@@ -62,19 +76,8 @@ impl<'w> FilterBuilder<'w> {
 		}
 	}
 
-	pub fn term<A: Component>(mut self) -> Self {
-		let world_raw = self.world.raw();
-		self.desc.terms[self.next_term_index].id = WorldInfoCache::get_component_id_for_type::<A>(world_raw)
-			.expect("Component type not registered!");
-
-		self.next_term_index += 1;
-		self
-	}
-
-	pub fn term_dynamic(mut self, comp_id: EntityId) -> Self {
-		// TODO - validate that the comp_id passed is valid
-		self.desc.terms[self.next_term_index].id = comp_id;
-		self.next_term_index += 1;
+	pub fn with_components<'c, G: ComponentGroup<'c>>(mut self) -> Self {
+		G::populate(&mut self);
 		self
 	}
 

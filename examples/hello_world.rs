@@ -30,18 +30,11 @@ fn main() {
 	world.component::<Eats>();
 	world.component::<Apples>();
 
-	world.system::<(Position, Velocity)>()
-		.expr("Position, Velocity")
-		.each(|e, (pos, vel)| {
+	world.system()
+		.with_components::<(Position, Velocity)>()
+		.each::<(Position, Velocity)>(|e, (pos, vel)| {
             println!("  {}: {:?}, {:?}", e.name(), pos, vel);
         });
-
-    // Register system
-    // ecs.system<Position, Velocity>()
-    //     .each([](Position& p, Velocity& v) {
-    //         p.x += v.x;
-    //         p.y += v.y;
-    //     });
 
     // Create an entity with name Bob, add Position and food preference
     let bob = world.entity().named("Bob")

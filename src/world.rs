@@ -245,16 +245,8 @@ impl World {
 		register_component_dynamic(self.world, symbol, Some(name), layout)
 	}
 
-	pub fn system<'a, G: ComponentGroup<'a>>(&'a self) -> SystemBuilder<'a, G> {
-		let sb: SystemBuilder<'a, G> = SystemBuilder::new(self);
-        sb
-    }	
-
-	// not sure yet if 'dynamic' is the right terminology, basically a system with no generic compile time types.
-	//	term T's must be determined explicitly in system implementations and match expression syntax.
-	//	Will not support each() calls for now
-	pub fn system_dynamic<'a>(&'a self) -> SystemBuilder<'a, ((), ())> {
-		let sb: SystemBuilder<'a, ((), ())> = SystemBuilder::new(self);
+	pub fn system(&self) -> SystemBuilder {
+		let sb = SystemBuilder::new(self);
         sb
     }	
 
@@ -268,7 +260,14 @@ impl World {
         filter_builder
     }	
 
+	pub fn query(& self) -> QueryBuilder {
+		let builder = QueryBuilder::new(self);
+        builder
+    }	
+
 	// Iterate through all entities matching 1 component
+	// TODO: can eliminate this in favor of more general each() once I can fix the 
+	// single macro issues
 	pub fn each1<A: Component>(&self, mut cb: impl FnMut(Entity, &A)) {
 		let filter = Filter::new_1::<A>(self.raw());
 		filter.each_1(|e: Entity, a: &A| {
@@ -278,50 +277,15 @@ impl World {
 
 	// Rust compiler will not let is use these short forms, perhaps we can solve the errors
 	//
-	// pub fn each<'a, G: ComponentGroup<'a>>(&'a self, cb: impl FnMut(Entity, G::RefTuple)) {
-	// 	let filter: FilterGroup<'a, G> = FilterGroup::new(self);
-	// 	filter.each(cb);
-    // }	
+	pub fn each<'a, G: ComponentGroup<'a>>(&'a self, cb: impl FnMut(Entity, G::RefTuple)) {
+		let filter: FilterGroup<'a, G> = FilterGroup::new(self);
+		filter.each(cb);
+    }	
 
-	// pub fn each_mut<'a, G: ComponentGroup<'a>>(&'a self, cb: impl FnMut(Entity, G::MutRefTuple)) {
-	// 	let filter: FilterGroup<'a, G> = FilterGroup::new(self);
-	// 	filter.each_mut(cb);
-    // }	
-
-	// But we can easily create these few 'overloads' in terms of component groups. 
-	// TODO: Possibly a macro could generate these
-
-	// Iterate through all entities matching 2 components
-	pub fn each_2<'a, A: Component, B: Component>(&'a self, mut cb: impl FnMut(Entity, &A, &B)) {
-		let filter: FilterGroup<'a, (A, B)> = FilterGroup::new(self);
-		filter.each(|e: Entity, (a, b)| {
-			cb(e, a, b);
-		});
-	}
-
-	// Iterate through all entities matching 3 components
-	pub fn each_3<'a, A: Component, B: Component, C: Component>(&'a self, mut cb: impl FnMut(Entity, &A, &B, &C)) {
-		let filter: FilterGroup<'a, (A, B, C)> = FilterGroup::new(self);
-		filter.each(|e: Entity, (a, b, c)| {
-			cb(e, a, b, c);
-		});
-	}
-
-	// Iterate through all entities matching 2 components
-	pub fn each_mut_2<'a, A: Component, B: Component>(&'a self, mut cb: impl FnMut(Entity, &mut A, &mut B)) {
-		let filter: FilterGroup<'a, (A, B)> = FilterGroup::new(self);
-		filter.each_mut(|e: Entity, (a, b)| {
-			cb(e, a, b);
-		});
-	}
-
-	// Iterate through all entities matching 3 components
-	pub fn each_mut_3<'a, A: Component, B: Component, C: Component>(&'a self, mut cb: impl FnMut(Entity, &mut A, &mut B, &mut C)) {
-		let filter: FilterGroup<'a, (A, B, C)> = FilterGroup::new(self);
-		filter.each_mut(|e: Entity, (a, b, c)| {
-			cb(e, a, b, c);
-		});
-	}
+	pub fn each_mut<'a, G: ComponentGroup<'a>>(&'a self, cb: impl FnMut(Entity, G::MutRefTuple)) {
+		let filter: FilterGroup<'a, G> = FilterGroup::new(self);
+		filter.each_mut(cb);
+    }	
 
 }
 

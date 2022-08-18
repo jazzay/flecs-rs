@@ -64,16 +64,14 @@ fn main() {
 	create_some_entities(&mut world, 3);
 
 	// Can wire a function into a system
-	world.system::<(Position, Velocity)>()
-		.named("system_one")
+	world.system().named("system_one")
 		.expr("Position, Velocity, !Scale")
-		.each_mut(system_one);
+		.each_mut::<(Position, Velocity)>(system_one);
 
 	// Or pass a closure directly
-	world.system::<(Position, Scale)>()
-		.named("system_two")
+	world.system().named("system_two")
 		.expr("Position, Scale")
-		.each_mut(|e, (pos, s)| {
+		.each_mut::<(Position, Scale)>(|e, (pos, s)| {
 			println!("Sys2 - {}: {:?}, {:?}", e.name(), pos, s);
 		});
 
@@ -82,13 +80,13 @@ fn main() {
 	// 	.signature("Position")
 	// 	.iter(system_two);
 
-	world.system_dynamic().named("system_with_iter")
+	world.system().named("system_with_iter")
 		.expr("Position, Velocity")
 		.iter(system_with_iter);
 
-		for _ in 0..5 {
-			world.progress(0.033);
-		}
+	for _ in 0..5 {
+		world.progress(0.033);
+	}
 }
 
 // We can also run these within tests. Need to figure out best org

@@ -19,8 +19,9 @@ struct Scale {
 }
 
 fn create_some_entities(world: &mut World, count: usize) {
-	for _ in 0..count {
+	for i in 0..count {
 		world.entity()
+			.named(&format!("E-{}", i))
 			.set(Position { x: 1.0, y: 2.0 })
 			.set(Velocity { x: 2.0, y: 4.0 })
 			.set(Scale { x: 1.0, y: 0.5 });
@@ -57,6 +58,11 @@ fn tick(world: &mut World) -> [f32; 2] {
 	// 	println!("Filter Single: {:?}  {:?}  {:?}", pos);
 	// });
 
+	// You can also create and iterate a filter in one call via World api:
+	world.each::<(Position, Velocity)>(|e, (pos, vel)| {
+		println!("World Each: {:?}  {:?}  {:?}", e.name(), pos, vel);
+	});
+
 	// assert_eq!(result, [6.0, 25.0]);
 	result
 }
@@ -64,14 +70,15 @@ fn tick(world: &mut World) -> [f32; 2] {
 fn main() {
 	println!("Filter example starting...");
 
+	let mut world = World::new();
+	world.component::<Position>();
+	world.component::<Velocity>();
+	world.component::<Scale>();
+
+	create_some_entities(&mut world, 5);
+
 	let mut result = [0.0, 0.0];
-	for _ in 0..10 {
-		let mut world = World::new();
-		world.component::<Position>();
-		world.component::<Velocity>();
-		world.component::<Scale>();
-	
-		create_some_entities(&mut world, 5);
+	for _ in 0..3 {
 		result = tick(&mut world);
 	}
 	println!("Result: {:?}", result);

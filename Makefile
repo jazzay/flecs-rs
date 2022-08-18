@@ -7,6 +7,7 @@ run-examples:
 	cargo run --example relations
 	cargo run --example filters
 	cargo run --example hello_world
+	cargo run --example queries_basics
 	cargo run --example systems
 	cargo run --example systems_basics
 	cargo run --example systems_delta_time

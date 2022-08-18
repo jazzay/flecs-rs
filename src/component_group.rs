@@ -29,6 +29,8 @@ pub trait ComponentGroup<'c>: /*private::SealedComponentGroup +*/ Sized + 'stati
     type RefTuple: 'c;
     type MutRefTuple: 'c;
 
+    fn populate(target: &mut impl TermBuilder);
+
     /// Populates an ecs_filter_desc with the component type ids
     unsafe fn fill_descriptor(world: *mut ecs_world_t, desc: &mut ecs_filter_desc_t);
 
@@ -43,6 +45,13 @@ pub trait ComponentGroup<'c>: /*private::SealedComponentGroup +*/ Sized + 'stati
 impl<'c, T: Component + SealedComponentGroup> ComponentGroup<'c> for T {
     type RefTuple = &'c T;
     type MutRefTuple = &'c mut T;
+
+    fn populate(target: &mut impl TermBuilder) {
+		let world = target.world();
+		let term = target.current_term();
+        term.id = WorldInfoCache::get_component_id_for_type::<T>(world).expect("Component type not registered!");
+		target.next_term();
+    }
 
     unsafe fn fill_descriptor(world: *mut ecs_world_t, desc: &mut ecs_filter_desc_t) {
         desc.terms[0].id = WorldInfoCache::get_component_id_for_type::<T>(world).expect("Component type not registered!");
@@ -66,6 +75,15 @@ macro_rules! impl_component_tuple {
         {
             type RefTuple = ($(&'s $elem),*);
             type MutRefTuple = ($(&'s mut $elem),*);
+
+            fn populate(target: &mut impl TermBuilder) {
+                let world = target.world();
+                $(
+                    let term = target.current_term();
+                    term.id = WorldInfoCache::get_component_id_for_type::<$elem>(world).expect("Component type not registered!");
+                    target.next_term();
+                )*
+            }
 
             unsafe fn fill_descriptor(world: *mut ecs_world_t, desc: &mut ecs_filter_desc_t) {
                 $(

@@ -8,6 +8,7 @@ repository = "https://github.com/jazzay/flecs-rs"
 license = "MIT"
 keywords = ["ecs", "game", "flecs"]
 categories = ["game-engines", "data-structures"]
+rust = "1.63"
 
 [profile.release]
 debug = true
@@ -49,6 +50,10 @@ name="hello_world"
 [[example]]
 name="filters"
 test = true
+
+[[example]]
+name="queries_basics"
+path = "examples/queries/basics.rs"
 
 [[example]]
 name="systems"
