@@ -6,7 +6,7 @@ pub struct Query {
 }
 
 impl Query {
-	pub fn each<'w, G: ComponentGroup<'w>>(&'w mut self, mut cb: impl FnMut(Entity, G::RefTuple)) {
+	pub fn each<'w, G: ComponentGroup<'w>>(&'w self, mut cb: impl FnMut(Entity, G::RefTuple)) {
 		unsafe {
 			let mut it = ecs_query_iter(self.world, self.query);
 			while ecs_query_next(&mut it) {
@@ -61,6 +61,10 @@ impl<'w> TermBuilder for QueryBuilder<'w> {
     fn world(&mut self) -> *mut ecs_world_t {
         self.world.raw()
     }
+
+	fn filter_desc(&mut self) -> &mut ecs_filter_desc_t {
+        &mut self.desc.filter
+	}
 
     fn current_term(&mut self) -> &mut ecs_term_t {
         &mut self.desc.filter.terms[self.next_term_index]

@@ -35,6 +35,40 @@ impl Filter {
 		}		
 	}
 
+	pub fn each<'w, G: ComponentGroup<'w>>(&'w self, mut cb: impl FnMut(Entity, G::RefTuple)) {
+		unsafe {
+			let mut it = ecs_filter_iter(self.world, self.filter);
+			while ecs_filter_next(&mut it) {
+				// Iterate all entities for the type
+				for i in 0..it.count {
+                    let eid = it.entities.offset(i as isize).as_ref().unwrap();
+                    let e = Entity::new(self.world, *eid);
+					let rt = G::iter_as_ref_tuple(&it, i as isize);
+					cb(e, rt);
+				}
+			}
+		}				
+	}
+
+	pub fn each_mut<'w, G: ComponentGroup<'w>>(&mut self, mut cb: impl FnMut(Entity, G::MutRefTuple)) {
+		unsafe {
+			let mut it = ecs_filter_iter(self.world, self.filter);
+			while ecs_filter_next(&mut it) {
+				// Iterate all entities for the type
+				for i in 0..it.count {
+                    let eid = it.entities.offset(i as isize).as_ref().unwrap();
+                    let e = Entity::new(self.world, *eid);
+
+					// TODO - performance is poor here due to looking up terms for each tuple entry * each entity
+					// we need to rework this to take slices of components, determined outside the loop
+					// so optimal iteration can occur
+					let rt = G::iter_as_mut_tuple(&it, i as isize);
+					cb(e, rt);
+				}
+			}
+		}				
+	}
+
 	pub fn iter<F: FnMut(&Iter)>(&self, mut func: F) {
 		unsafe {
 			let mut it = ecs_filter_iter(self.world, self.filter);
@@ -57,6 +91,10 @@ impl<'w> TermBuilder for FilterBuilder<'w> {
     fn world(&mut self) -> *mut ecs_world_t {
         self.world.raw()
     }
+
+	fn filter_desc(&mut self) -> &mut ecs_filter_desc_t {
+        &mut self.desc
+	}
 
     fn current_term(&mut self) -> &mut ecs_term_t {
         &mut self.desc.terms[self.next_term_index]

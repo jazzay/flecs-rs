@@ -62,6 +62,10 @@ impl<'w> TermBuilder for SystemBuilder<'w> {
         self.world.raw()
     }
 
+	fn filter_desc(&mut self) -> &mut ecs_filter_desc_t {
+        &mut self.desc.query.filter
+	}
+
     fn current_term(&mut self) -> &mut ecs_term_t {
         &mut self.desc.query.filter.terms[self.next_term_index]
     }
