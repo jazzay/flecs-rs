@@ -454,5 +454,16 @@ impl ColumnDynamic {
 			std::slice::from_raw_parts_mut(ptr, len)
 		}
 	}
+
+	pub fn get_mut(&mut self, index: usize) -> &mut [u8] {
+		assert!(index < self.count);
+		assert!(index == 0 || !self.is_shared);
+		unsafe {
+			let element_offset = index * self.element_size;
+			let ptr = self.array.offset(element_offset as isize);
+			let len = self.element_size;
+			std::slice::from_raw_parts_mut(ptr, len)
+		}
+	}
 }
 
