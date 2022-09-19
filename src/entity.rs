@@ -144,6 +144,12 @@ impl Entity {
 		self.add_id(pair)
 	}
 
+	pub fn try_get<T: Component>(&self) -> Option<&T> {
+		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
+		let value = unsafe { ecs_get_id(self.world, self.entity, comp_id) };
+		unsafe { (value as *const T).as_ref() }
+	}
+
 	pub fn get<T: Component>(&self) -> &T {
 		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
 		let value = unsafe { ecs_get_id(self.world, self.entity, comp_id) };
