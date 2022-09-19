@@ -27,8 +27,26 @@ pub(crate) fn register_component_typed<T: 'static>(world: *mut ecs_world_t, name
 		name.to_owned()
 	} else {
 		// Note :: in rust is the module sep, while in flecs it is path sep (parenting)
-		let s = symbol.replace("::", ".");
-		s.split(".").last().unwrap().to_owned()
+		if symbol.contains("<") {
+			let mut nested_templates = Vec::new();
+			let mut read_idx = 0;
+			for (i, c) in symbol.chars().enumerate() {
+				if (c == '<' || c == '>') && read_idx != i {
+					nested_templates.push(symbol[read_idx..i].to_string());
+					read_idx = i + 1;
+				}
+			}
+			assert!(!nested_templates.is_empty());
+			let mut stripped_name = nested_templates.last().unwrap().to_owned();
+			for s in nested_templates.iter().rev().skip(1) {
+				let s = s.split("::").last().unwrap().to_owned();
+				stripped_name = s + "<" + &stripped_name + ">";
+			}
+			stripped_name
+		} else {
+			let s = symbol.replace("::", ".");
+			s.split(".").last().unwrap().to_owned()
+		}
 	};
 
 	// To achieve language neutral component symbol/naming we need to strip off any compiler
