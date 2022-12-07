@@ -332,7 +332,7 @@ impl Iter {
 			// println!("Term: {}, is_shared: {}, count: {}", term_id, is_shared, count);
 
 			let size = std::mem::size_of::<T>();
-			let array = unsafe { ecs_field_w_size(self.it, size as size_t, index) as *mut T };
+			let array = unsafe { ecs_field_w_size(self.it, size, index) as *mut T };
 
 			Column::new(array, count, is_shared)
     }
@@ -351,10 +351,10 @@ impl Iter {
 
 			let mut size = 0;	// we only get a size if there is a component?
 			if let Some(info) = get_component_info(world, term_id) {
-			size = info.size;
+				size = info.size as usize;
 			}
 
-			let array = unsafe { ecs_field_w_size(self.it, size as size_t, index) as *mut u8 };
+			let array = unsafe { ecs_field_w_size(self.it, size, index) as *mut u8 };
 
 			ColumnDynamic::new(array, count, size as usize, is_shared)
     }	

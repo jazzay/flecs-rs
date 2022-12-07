@@ -14,13 +14,13 @@ lazy_static::lazy_static! {
 // This accesses query/filter field component data
 pub unsafe fn ecs_field<T: Component>(it: *const ecs_iter_t, index: i32) -> *mut T {
     let size = std::mem::size_of::<T>();
-    ecs_field_w_size(it, size as size_t, index) as *mut T
+    ecs_field_w_size(it, size, index) as *mut T
 }
 
 // This accesses all table columns for a matched archetype
 pub unsafe fn ecs_iter_column<T: Component>(it: *const ecs_iter_t, index: i32) -> *mut T {
     let size = std::mem::size_of::<T>();
-    ecs_iter_column_w_size(it, size as size_t, index) as *mut T
+    ecs_iter_column_w_size(it, size, index) as *mut T
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////

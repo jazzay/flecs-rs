@@ -305,7 +305,7 @@ impl Drop for World {
 impl World {
 	pub fn enable_rest(&self) {
     let rest_comp_id = unsafe { FLECS__EEcsRest as u64 };
-		let rest_comp_size = std::mem::size_of::<EcsRest>() as size_t;
+		let rest_comp_size = std::mem::size_of::<EcsRest>();
 		
 		let rest_data: EcsRest = unsafe { MaybeUninit::zeroed().assume_init() };
 
