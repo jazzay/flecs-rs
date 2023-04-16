@@ -23,10 +23,10 @@ Entity Iterate Components starting...
 
 Bob's components
 Position, Velocity, Human, (Eats,Apples)
-0: [510] Position
-1: [511] Velocity
-2: [512] Human
-3: [9223374240172999170] (Eats,Apples)
+0: [519] Position
+1: [520] Velocity
+2: [521] Human
+3: [9223374278827704843] (Eats,Apples)
 
 0: entity: Position  [Position]
 1: entity: Velocity  [Velocity]
@@ -49,7 +49,7 @@ cargo run --example prefabs
 Entity Prefabs starting...
 Instance type: [Position, (Identifier,Name), (IsA,MammothFreighter)]
 Impulse speed: 50
-my_mammoth_freighter: { 0.0000000000000000001392604, 0.000000000000000000000000000000000000000000001 }
+my_mammoth_freighter: { 0.00000000014325163, 0.000000000000000000000000000000000000000000001 }
 cargo run --example relations
 Entity Relations starting...
 Bob eats apples? true
@@ -171,8 +171,8 @@ e1: Position { x: 11.0, y: 22.0 }, Velocity { x: 1.0, y: 2.0 }
 e2: Position { x: 13.0, y: 24.0 }, Velocity { x: 3.0, y: 4.0 }
 cargo run --example systems_delta_time
 delta_time: 0.016666668
-delta_time: 0.102098875
-delta_time: 0.10512329
+delta_time: 0.102063164
+delta_time: 0.10512221
 cargo run --example dynamic_components
 Dynamic components example starting...
 Filter 1 result batch:
