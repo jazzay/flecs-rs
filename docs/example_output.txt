@@ -1,0 +1,204 @@
+cargo run --example entity_basics
+Entity Basics starting...
+Bob position: 10, 20
+Bob position: 20, 30
+Alice type = [ Position, Walking, (Identifier,Name) ]
+Alice: 10, 20
+Bob: 20, 30
+cargo run --example entity_hierarchy
+Entity Hierarchy starting...
+Child of Earth? true
+::Sun [Position, Star, (Identifier,Name)]
+{ 1, 1 }
+::Sun::Mercury [Position, Planet, (Identifier,Name), (ChildOf,Sun)]
+{ 2, 2 }
+::Sun::Venus [Position, Planet, (Identifier,Name), (ChildOf,Sun)]
+{ 3, 3 }
+::Sun::Earth [Position, Planet, (Identifier,Name), (ChildOf,Sun)]
+{ 4, 4 }
+::Sun::Earth::MoonE [Position, Moon, (Identifier,Name), (ChildOf,Sun.Earth)]
+{ 4.1, 4.1 }
+cargo run --example entity_iterate_components
+Entity Iterate Components starting...
+
+Bob's components
+Position, Velocity, Human, (Eats,Apples)
+0: [484] Position
+1: [485] Velocity
+2: [486] Human
+3: [9223374128503849448] (Eats,Apples)
+
+0: entity: Position  [Position]
+1: entity: Velocity  [Velocity]
+2: entity: Human  [Human]
+rel: Eats, obj: Apples
+
+Position's components
+Component, (Identifier,Name), (Identifier,Symbol), (OnDelete,Panic)
+0: [1] Component
+1: [9223372045444710686] (Identifier,Name)
+2: [9223372045444710687] (Identifier,Symbol)
+3: [9223373295280193844] (OnDelete,Panic)
+
+0: entity: Component  [EcsComponent]
+rel: Identifier, obj: Name
+rel: Identifier, obj: Symbol
+rel: OnDelete, obj: Panic
+
+cargo run --example prefabs
+Entity Prefabs starting...
+Instance type: [Position, (Identifier,Name), (IsA,MammothFreighter)]
+Impulse speed: 50
+my_mammoth_freighter: { 0, 0 }
+cargo run --example relations
+Entity Relations starting...
+Bob eats apples? true
+Bob grows food? true
+Bob's type: [ (Identifier,Name), (Eats,Apples), (Grows,Pears) ]
+cargo run --example filters
+Filter example starting...
+Group-2 Iter: Position { x: 1.0, y: 2.0 }  Velocity { x: 2.0, y: 4.0 }
+Group-2 Iter: Position { x: 1.0, y: 2.0 }  Velocity { x: 2.0, y: 4.0 }
+Group-2 Iter: Position { x: 1.0, y: 2.0 }  Velocity { x: 2.0, y: 4.0 }
+Group-2 Iter: Position { x: 1.0, y: 2.0 }  Velocity { x: 2.0, y: 4.0 }
+Group-2 Iter: Position { x: 1.0, y: 2.0 }  Velocity { x: 2.0, y: 4.0 }
+Group-3 Iter: Position { x: 3.0, y: 6.0 }  Velocity { x: 2.0, y: 4.0 }  Scale { x: 1.0, y: 0.5 }
+Group-3 Iter: Position { x: 3.0, y: 6.0 }  Velocity { x: 2.0, y: 4.0 }  Scale { x: 1.0, y: 0.5 }
+Group-3 Iter: Position { x: 3.0, y: 6.0 }  Velocity { x: 2.0, y: 4.0 }  Scale { x: 1.0, y: 0.5 }
+Group-3 Iter: Position { x: 3.0, y: 6.0 }  Velocity { x: 2.0, y: 4.0 }  Scale { x: 1.0, y: 0.5 }
+Group-3 Iter: Position { x: 3.0, y: 6.0 }  Velocity { x: 2.0, y: 4.0 }  Scale { x: 1.0, y: 0.5 }
+World Each: "E-0"  Position { x: 3.0, y: 6.0 }  Velocity { x: 2.0, y: 4.0 }
+World Each: "E-1"  Position { x: 3.0, y: 6.0 }  Velocity { x: 2.0, y: 4.0 }
+World Each: "E-2"  Position { x: 3.0, y: 6.0 }  Velocity { x: 2.0, y: 4.0 }
+World Each: "E-3"  Position { x: 3.0, y: 6.0 }  Velocity { x: 2.0, y: 4.0 }
+World Each: "E-4"  Position { x: 3.0, y: 6.0 }  Velocity { x: 2.0, y: 4.0 }
+Group-2 Iter: Position { x: 3.0, y: 6.0 }  Velocity { x: 2.0, y: 4.0 }
+Group-2 Iter: Position { x: 3.0, y: 6.0 }  Velocity { x: 2.0, y: 4.0 }
+Group-2 Iter: Position { x: 3.0, y: 6.0 }  Velocity { x: 2.0, y: 4.0 }
+Group-2 Iter: Position { x: 3.0, y: 6.0 }  Velocity { x: 2.0, y: 4.0 }
+Group-2 Iter: Position { x: 3.0, y: 6.0 }  Velocity { x: 2.0, y: 4.0 }
+Group-3 Iter: Position { x: 5.0, y: 10.0 }  Velocity { x: 2.0, y: 4.0 }  Scale { x: 1.0, y: 0.5 }
+Group-3 Iter: Position { x: 5.0, y: 10.0 }  Velocity { x: 2.0, y: 4.0 }  Scale { x: 1.0, y: 0.5 }
+Group-3 Iter: Position { x: 5.0, y: 10.0 }  Velocity { x: 2.0, y: 4.0 }  Scale { x: 1.0, y: 0.5 }
+Group-3 Iter: Position { x: 5.0, y: 10.0 }  Velocity { x: 2.0, y: 4.0 }  Scale { x: 1.0, y: 0.5 }
+Group-3 Iter: Position { x: 5.0, y: 10.0 }  Velocity { x: 2.0, y: 4.0 }  Scale { x: 1.0, y: 0.5 }
+World Each: "E-0"  Position { x: 5.0, y: 10.0 }  Velocity { x: 2.0, y: 4.0 }
+World Each: "E-1"  Position { x: 5.0, y: 10.0 }  Velocity { x: 2.0, y: 4.0 }
+World Each: "E-2"  Position { x: 5.0, y: 10.0 }  Velocity { x: 2.0, y: 4.0 }
+World Each: "E-3"  Position { x: 5.0, y: 10.0 }  Velocity { x: 2.0, y: 4.0 }
+World Each: "E-4"  Position { x: 5.0, y: 10.0 }  Velocity { x: 2.0, y: 4.0 }
+Group-2 Iter: Position { x: 5.0, y: 10.0 }  Velocity { x: 2.0, y: 4.0 }
+Group-2 Iter: Position { x: 5.0, y: 10.0 }  Velocity { x: 2.0, y: 4.0 }
+Group-2 Iter: Position { x: 5.0, y: 10.0 }  Velocity { x: 2.0, y: 4.0 }
+Group-2 Iter: Position { x: 5.0, y: 10.0 }  Velocity { x: 2.0, y: 4.0 }
+Group-2 Iter: Position { x: 5.0, y: 10.0 }  Velocity { x: 2.0, y: 4.0 }
+Group-3 Iter: Position { x: 7.0, y: 14.0 }  Velocity { x: 2.0, y: 4.0 }  Scale { x: 1.0, y: 0.5 }
+Group-3 Iter: Position { x: 7.0, y: 14.0 }  Velocity { x: 2.0, y: 4.0 }  Scale { x: 1.0, y: 0.5 }
+Group-3 Iter: Position { x: 7.0, y: 14.0 }  Velocity { x: 2.0, y: 4.0 }  Scale { x: 1.0, y: 0.5 }
+Group-3 Iter: Position { x: 7.0, y: 14.0 }  Velocity { x: 2.0, y: 4.0 }  Scale { x: 1.0, y: 0.5 }
+Group-3 Iter: Position { x: 7.0, y: 14.0 }  Velocity { x: 2.0, y: 4.0 }  Scale { x: 1.0, y: 0.5 }
+World Each: "E-0"  Position { x: 7.0, y: 14.0 }  Velocity { x: 2.0, y: 4.0 }
+World Each: "E-1"  Position { x: 7.0, y: 14.0 }  Velocity { x: 2.0, y: 4.0 }
+World Each: "E-2"  Position { x: 7.0, y: 14.0 }  Velocity { x: 2.0, y: 4.0 }
+World Each: "E-3"  Position { x: 7.0, y: 14.0 }  Velocity { x: 2.0, y: 4.0 }
+World Each: "E-4"  Position { x: 7.0, y: 14.0 }  Velocity { x: 2.0, y: 4.0 }
+Result: [60.0, 120.0]
+cargo run --example hello_world
+Hello World starting...
+Bob's got: [ Position, Velocity, (Identifier,Name), (Eats,Apples) ]
+  Bob: Position { x: 0.0, y: 0.0 }, Velocity { x: 1.0, y: 2.0 }
+  Bob: Position { x: 0.0, y: 0.0 }, Velocity { x: 1.0, y: 2.0 }
+Bob's position is { 0, 0 }
+cargo run --example queries_basics
+Each - e1: Position { x: 11.0, y: 22.0 }, Velocity { x: 1.0, y: 2.0 }
+Each - e2: Position { x: 13.0, y: 24.0 }, Velocity { x: 3.0, y: 4.0 }
+Iter - Position { x: 11.0, y: 22.0 }, Velocity { x: 1.0, y: 2.0 }
+Iter - Position { x: 13.0, y: 24.0 }, Velocity { x: 3.0, y: 4.0 }
+cargo run --example systems
+Systems example starting...
+Sys1 - A-0: Position { x: 3.0, y: 6.0 }, Velocity { x: 2.0, y: 4.0 }
+Sys1 - A-1: Position { x: 3.0, y: 6.0 }, Velocity { x: 2.0, y: 4.0 }
+Sys1 - A-2: Position { x: 3.0, y: 6.0 }, Velocity { x: 2.0, y: 4.0 }
+Sys2 - B-0: Position { x: 1.0, y: 2.0 }, Scale { x: 1.0, y: 1.0 }
+system_with_iter: entities = 3
+   Position { x: 3.0, y: 6.0 }, Velocity { x: 2.0, y: 4.0 }
+   Position { x: 3.0, y: 6.0 }, Velocity { x: 2.0, y: 4.0 }
+   Position { x: 3.0, y: 6.0 }, Velocity { x: 2.0, y: 4.0 }
+system_with_iter: entities = 1
+   Position { x: 1.0, y: 2.0 }, Velocity { x: 2.0, y: 4.0 }
+Sys1 - A-0: Position { x: 5.0, y: 10.0 }, Velocity { x: 2.0, y: 4.0 }
+Sys1 - A-1: Position { x: 5.0, y: 10.0 }, Velocity { x: 2.0, y: 4.0 }
+Sys1 - A-2: Position { x: 5.0, y: 10.0 }, Velocity { x: 2.0, y: 4.0 }
+Sys2 - B-0: Position { x: 1.0, y: 2.0 }, Scale { x: 1.0, y: 1.0 }
+system_with_iter: entities = 3
+   Position { x: 5.0, y: 10.0 }, Velocity { x: 2.0, y: 4.0 }
+   Position { x: 5.0, y: 10.0 }, Velocity { x: 2.0, y: 4.0 }
+   Position { x: 5.0, y: 10.0 }, Velocity { x: 2.0, y: 4.0 }
+system_with_iter: entities = 1
+   Position { x: 1.0, y: 2.0 }, Velocity { x: 2.0, y: 4.0 }
+Sys1 - A-0: Position { x: 7.0, y: 14.0 }, Velocity { x: 2.0, y: 4.0 }
+Sys1 - A-1: Position { x: 7.0, y: 14.0 }, Velocity { x: 2.0, y: 4.0 }
+Sys1 - A-2: Position { x: 7.0, y: 14.0 }, Velocity { x: 2.0, y: 4.0 }
+Sys2 - B-0: Position { x: 1.0, y: 2.0 }, Scale { x: 1.0, y: 1.0 }
+system_with_iter: entities = 3
+   Position { x: 7.0, y: 14.0 }, Velocity { x: 2.0, y: 4.0 }
+   Position { x: 7.0, y: 14.0 }, Velocity { x: 2.0, y: 4.0 }
+   Position { x: 7.0, y: 14.0 }, Velocity { x: 2.0, y: 4.0 }
+system_with_iter: entities = 1
+   Position { x: 1.0, y: 2.0 }, Velocity { x: 2.0, y: 4.0 }
+Sys1 - A-0: Position { x: 9.0, y: 18.0 }, Velocity { x: 2.0, y: 4.0 }
+Sys1 - A-1: Position { x: 9.0, y: 18.0 }, Velocity { x: 2.0, y: 4.0 }
+Sys1 - A-2: Position { x: 9.0, y: 18.0 }, Velocity { x: 2.0, y: 4.0 }
+Sys2 - B-0: Position { x: 1.0, y: 2.0 }, Scale { x: 1.0, y: 1.0 }
+system_with_iter: entities = 3
+   Position { x: 9.0, y: 18.0 }, Velocity { x: 2.0, y: 4.0 }
+   Position { x: 9.0, y: 18.0 }, Velocity { x: 2.0, y: 4.0 }
+   Position { x: 9.0, y: 18.0 }, Velocity { x: 2.0, y: 4.0 }
+system_with_iter: entities = 1
+   Position { x: 1.0, y: 2.0 }, Velocity { x: 2.0, y: 4.0 }
+Sys1 - A-0: Position { x: 11.0, y: 22.0 }, Velocity { x: 2.0, y: 4.0 }
+Sys1 - A-1: Position { x: 11.0, y: 22.0 }, Velocity { x: 2.0, y: 4.0 }
+Sys1 - A-2: Position { x: 11.0, y: 22.0 }, Velocity { x: 2.0, y: 4.0 }
+Sys2 - B-0: Position { x: 1.0, y: 2.0 }, Scale { x: 1.0, y: 1.0 }
+system_with_iter: entities = 3
+   Position { x: 11.0, y: 22.0 }, Velocity { x: 2.0, y: 4.0 }
+   Position { x: 11.0, y: 22.0 }, Velocity { x: 2.0, y: 4.0 }
+   Position { x: 11.0, y: 22.0 }, Velocity { x: 2.0, y: 4.0 }
+system_with_iter: entities = 1
+   Position { x: 1.0, y: 2.0 }, Velocity { x: 2.0, y: 4.0 }
+cargo run --example systems_basics
+e1: Position { x: 11.0, y: 22.0 }, Velocity { x: 1.0, y: 2.0 }
+e2: Position { x: 13.0, y: 24.0 }, Velocity { x: 3.0, y: 4.0 }
+cargo run --example systems_delta_time
+delta_time: 0.016666668
+delta_time: 0.10507575
+delta_time: 0.10115146
+cargo run --example dynamic_components
+Dynamic components example starting...
+Filter 1 result batch:
+   Position { x: 0.0, y: 0.0 }, [0, 0, 0, 0, 0, 0]
+   Position { x: 0.0, y: 0.0 }, [1, 1, 1, 1, 1, 1]
+   Position { x: 0.0, y: 0.0 }, [2, 2, 2, 2, 2, 2]
+   Position { x: 0.0, y: 0.0 }, [3, 3, 3, 3, 3, 3]
+   Position { x: 0.0, y: 0.0 }, [4, 4, 4, 4, 4, 4]
+   Position { x: 0.0, y: 0.0 }, [5, 5, 5, 5, 5, 5]
+   Position { x: 0.0, y: 0.0 }, [6, 6, 6, 6, 6, 6]
+   Position { x: 0.0, y: 0.0 }, [7, 7, 7, 7, 7, 7]
+Filter 2 result batch:
+   Position { x: 0.0, y: 0.0 }, Velocity { x: 0.0, y: 0.0 }, [0, 0, 0, 0, 0, 0]
+   Position { x: 0.0, y: 0.0 }, Velocity { x: 0.0, y: 0.0 }, [1, 1, 1, 1, 1, 1]
+   Position { x: 0.0, y: 0.0 }, Velocity { x: 0.0, y: 0.0 }, [2, 2, 2, 2, 2, 2]
+   Position { x: 0.0, y: 0.0 }, Velocity { x: 0.0, y: 0.0 }, [3, 3, 3, 3, 3, 3]
+   Position { x: 0.0, y: 0.0 }, Velocity { x: 0.0, y: 0.0 }, [4, 4, 4, 4, 4, 4]
+   Position { x: 0.0, y: 0.0 }, Velocity { x: 0.0, y: 0.0 }, [5, 5, 5, 5, 5, 5]
+   Position { x: 0.0, y: 0.0 }, Velocity { x: 0.0, y: 0.0 }, [6, 6, 6, 6, 6, 6]
+   Position { x: 0.0, y: 0.0 }, Velocity { x: 0.0, y: 0.0 }, [7, 7, 7, 7, 7, 7]
+Dynamic System results:
+   Position { x: 0.0, y: 0.0 }, [0, 0, 0, 0, 0, 0]
+   Position { x: 0.0, y: 0.0 }, [1, 1, 1, 1, 1, 1]
+   Position { x: 0.0, y: 0.0 }, [2, 2, 2, 2, 2, 2]
+   Position { x: 0.0, y: 0.0 }, [3, 3, 3, 3, 3, 3]
+   Position { x: 0.0, y: 0.0 }, [4, 4, 4, 4, 4, 4]
+   Position { x: 0.0, y: 0.0 }, [5, 5, 5, 5, 5, 5]
+   Position { x: 0.0, y: 0.0 }, [6, 6, 6, 6, 6, 6]
+   Position { x: 0.0, y: 0.0 }, [7, 7, 7, 7, 7, 7]
