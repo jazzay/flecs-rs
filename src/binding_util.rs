@@ -17,11 +17,13 @@ pub unsafe fn ecs_field<T: Component>(it: *const ecs_iter_t, index: i32) -> *mut
     ecs_field_w_size(it, size, index) as *mut T
 }
 
+// This API (ecs_iter_column_w_size) removed in Fles 3.1.3
+//
 // This accesses all table columns for a matched archetype
-pub unsafe fn ecs_iter_column<T: Component>(it: *const ecs_iter_t, index: i32) -> *mut T {
-    let size = std::mem::size_of::<T>();
-    ecs_iter_column_w_size(it, size, index) as *mut T
-}
+// pub unsafe fn ecs_iter_column<T: Component>(it: *const ecs_iter_t, index: i32) -> *mut T {
+//     let size = std::mem::size_of::<T>();
+//     ecs_iter_column_w_size(it, size, index) as *mut T
+// }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 // String helpers

@@ -65,6 +65,8 @@ simple_insert/flecs - 75.482 ms
 simple_iter/flecs_each - 741.34 µs
 simple_iter/flecs_iter - 36.590 µs
 
-
+# Flecs 3.1.3 Release (Apr 2023)
+Pretty much the same results
+Should add better benches once 3.2 upgrade is completed.
 
 
