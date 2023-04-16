@@ -171,8 +171,8 @@ e1: Position { x: 11.0, y: 22.0 }, Velocity { x: 1.0, y: 2.0 }
 e2: Position { x: 13.0, y: 24.0 }, Velocity { x: 3.0, y: 4.0 }
 cargo run --example systems_delta_time
 delta_time: 0.016666668
-delta_time: 0.10507575
-delta_time: 0.10115146
+delta_time: 0.10125846
+delta_time: 0.10289025
 cargo run --example dynamic_components
 Dynamic components example starting...
 Filter 1 result batch:
