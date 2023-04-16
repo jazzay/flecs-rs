@@ -89,3 +89,11 @@ fn main() {
         println!("{}: {{ {}, {} }}", e.name(), p.x, p.y);
     });
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn flecs_entity_prefabs() {
+		super::main();
+	}
+}

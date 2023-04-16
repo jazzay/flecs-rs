@@ -25,3 +25,11 @@ fn main() {
     world.progress(0.0);
 
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn flecs_systems_delta_time() {
+		super::main();
+	}
+}

@@ -40,3 +40,11 @@ fn main() {
 
 	system.run(0.333);
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn flecs_systems_basics() {
+		super::main();
+	}
+}

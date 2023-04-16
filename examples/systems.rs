@@ -89,11 +89,10 @@ fn main() {
 	}
 }
 
-// We can also run these within tests. Need to figure out best org
-//
 #[cfg(test)]
 mod tests {
     #[test]
     fn flecs_systems() {
+		super::main();
 	}
 }

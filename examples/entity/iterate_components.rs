@@ -107,3 +107,11 @@ fn main() {
 // 1: role: PAIR, rel: Identifier, obj: Identifier
 // 2: role: PAIR, rel: Identifier, obj: Identifier
 // 3: role: PAIR, rel: OnDelete, obj: OnDelete
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn flecs_entity_iterate_components() {
+		super::main();
+	}
+}

@@ -58,5 +58,12 @@ fn main() {
 			println!("Iter - {:?}, {:?}", pos, vel);
 		}	
 	});
+}
 
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn flecs_queries_basics() {
+		super::main();
+	}
 }

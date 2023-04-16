@@ -53,3 +53,11 @@ fn main() {
     let p = bob.get::<Position>();
     println!("Bob's position is {{ {}, {} }}", p.x, p.y);
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn flecs_hello_world() {
+		super::main();
+	}
+}

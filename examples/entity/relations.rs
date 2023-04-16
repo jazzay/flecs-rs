@@ -53,3 +53,11 @@ fn main() {
     //     std::cout << "Bob " << id.relation().name() << " pears\n";
     // });
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn flecs_entity_relations() {
+		super::main();
+	}
+}

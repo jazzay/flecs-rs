@@ -72,3 +72,11 @@ fn main() {
     // Do a depth-first walk of the tree
     iterate_tree(sun, Position::default());
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn flecs_entity_hierarchy() {
+		super::main();
+	}
+}
