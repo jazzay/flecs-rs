@@ -32,18 +32,29 @@ simple_insert/bevy_batched - 2.9090 ms
 simple_iter/bevy - 122.76 µs
 
 Hecs 0.10.1
-simple_insert/hecs_single - 12.901 ms 
-simple_insert/hecs_batched - 3.0754 ms
+simple_insert/hecs_single - 10.123 ms 
+simple_insert/hecs_batched - 2.8848 ms
 simple_iter/hecs - 91.187 µs
 
 Flax 0.4.0
-simple_insert/flax_single - 53.181 ms 
-simple_insert/flax_batched - 1.6943 ms
+simple_insert/flax_single - 52.398 ms 
+simple_insert/flax_batched - 1.5866 ms
 simple_iter/flax - 97.714 µs	large gain! on par w Hecs now
 
 flecs 3.0.1 (unchanged)
 simple_insert/flecs - 69.735 ms
-simple_iter/flecs_each - 722.49 µs 723.19 µs
+simple_iter/flecs_each - 722.49 µs
 simple_iter/flecs_iter - 35.810 µs
+
+# Flecs 3.1 Release (Apr 2023)
+
+Other 3 similar to above
+
+flecs 3.1.0
+simple_insert/flecs - 70.977 ms
+simple_iter/flecs_each - 724.53
+simple_iter/flecs_iter - 35.739 µs
+
+
 
 

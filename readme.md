@@ -7,7 +7,7 @@
 A Rust binding for the Flecs ECS library: 
 https://github.com/SanderMertens/flecs
 
-Wraps native Flecs v3.0.4
+Wraps native Flecs v3.1.0
 
 ## A Simple Example
 
