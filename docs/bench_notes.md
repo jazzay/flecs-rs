@@ -73,4 +73,7 @@ simple_insert/flecs - 59.603 ms		20% savings!
 simple_iter/flecs_each - 732.62 µs
 simple_iter/flecs_iter - 35.545 µs
 
+# Flecs 3.1.5 Release (Apr 2023)
+Pretty much the same results as for 3.1.4
+
 
