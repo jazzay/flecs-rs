@@ -21,9 +21,9 @@ bindgen = "0.63.0"
 cc = "1.0.70"
 
 [dev-dependencies]
-hecs = "0.9.0"
-bevy_ecs = "0.9.1"
-flax = "0.3.2"
+hecs = "0.10.3"
+bevy_ecs = "0.10.1"
+flax = "0.4.0"
 criterion = "0.3"
 
 [[example]]
