@@ -1,5 +1,4 @@
 run-examples:
-	cargo run --example dynamic_components
 	cargo run --example entity_basics
 	cargo run --example entity_hierarchy
 	cargo run --example entity_iterate_components
@@ -11,6 +10,7 @@ run-examples:
 	cargo run --example systems
 	cargo run --example systems_basics
 	cargo run --example systems_delta_time
+	cargo run --example dynamic_components
 setup_emsdk:
 	# Way to dangerous to automatically delete a directory, imagine if user set /
 	@if [ -d $(EMSDK) ]; then echo "emsdk '$(EMSDK)' directory already exist, please delete-it manually"; exit 1; fi
