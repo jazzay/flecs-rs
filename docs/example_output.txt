@@ -49,7 +49,7 @@ cargo run --example prefabs
 Entity Prefabs starting...
 Instance type: [Position, (Identifier,Name), (IsA,MammothFreighter)]
 Impulse speed: 50
-my_mammoth_freighter: { 0.0000000000000036252197, 0.000000000000000000000000000000000000000000001 }
+my_mammoth_freighter: { 0.63178635, 0.000000000000000000000000000000000000000000001 }
 cargo run --example relations
 Entity Relations starting...
 Bob eats apples? true
@@ -171,8 +171,8 @@ e1: Position { x: 11.0, y: 22.0 }, Velocity { x: 1.0, y: 2.0 }
 e2: Position { x: 13.0, y: 24.0 }, Velocity { x: 3.0, y: 4.0 }
 cargo run --example systems_delta_time
 delta_time: 0.016666668
-delta_time: 0.105123416
-delta_time: 0.10510437
+delta_time: 0.10291779
+delta_time: 0.10512454
 cargo run --example dynamic_components
 Dynamic components example starting...
 Filter 1 result batch:
