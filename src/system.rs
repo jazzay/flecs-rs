@@ -298,6 +298,10 @@ impl Iter {
 		Entity::new(unsafe { (*self.it).world }, *entity)
     }
 
+	pub fn field_count(&self) -> i32 {
+		unsafe { (*self.it).field_count }
+	}
+
     pub fn field<A: Component>(&self, index: i32) -> Column<A> {
         Self::get_field::<A>(self, index)
     }
@@ -338,6 +342,10 @@ impl Iter {
     }
 
     pub fn field_dynamic(&self, index: i32) -> ColumnDynamic {
+			// fields are 1 based
+			assert!(index > 0);
+			assert!(index <= self.field_count());
+
 			let mut count = self.count();
 
 			let is_shared = unsafe { !ecs_field_is_self(self.it, index) };
@@ -347,7 +355,7 @@ impl Iter {
 
 			// TODO: look this up within the component info
 			let world = unsafe { (*self.it).real_world };
-				let term_id = unsafe { ecs_field_id(self.it, index) };
+			let term_id = unsafe { ecs_field_id(self.it, index) };
 
 			let mut size = 0;	// we only get a size if there is a component?
 			if let Some(info) = get_component_info(world, term_id) {
