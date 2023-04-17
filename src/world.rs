@@ -519,6 +519,24 @@ impl World {
 		unsafe { ecs_plecs_from_file(self.world, filename_c_str.as_ptr() as *const i8) }
 	}
 		
+	/** Serialize world to JSON.
+	 */
+	fn to_json(&self) -> String {
+		unsafe {
+			let json_str = ecs_world_to_json(self.world, std::ptr::null());
+			flecs_to_rust_string(json_str)
+		}
+	}
+
+	/** Deserialize JSON into world.
+	 */
+	fn from_json(&mut self, json: &str) {	//, flecs::from_json_desc_t *desc = nullptr) {
+		let json_c_str = std::ffi::CString::new(json).unwrap();
+		let desc = std::ptr::null();
+		unsafe {
+			let result = ecs_world_from_json(self.world, json_c_str.as_ptr() as *const i8, desc);
+		}
+	}
 
 }
 
@@ -555,17 +573,17 @@ impl World {
 #[cfg(test)]
 mod world_tests {
 	use super::*;
-	struct A { v: i32 }
-	struct B { v: f32 }
+	struct CompA { v: i32 }
+	struct CompB { v: f32 }
 
 	fn create_test_world() -> World {
 		let mut world = World::new();
 
-		world.component::<A>();
-		world.component::<B>();
+		world.component::<CompA>().named("CompA");
+		world.component::<CompB>().named("CompB");
 	
-		world.entity().set(A { v: 1234 }).set(B { v: 123.0 });
-		world.entity().set(A { v: 2468 }).set(B { v: 99.0 });
+		world.entity().set(CompA { v: 1234 }).set(CompB { v: 123.0 });
+		world.entity().set(CompA { v: 2468 }).set(CompB { v: 99.0 });
 
 		world
 	}
@@ -573,28 +591,28 @@ mod world_tests {
     #[test]
     fn world_new() {
 		let world = create_test_world();
-		assert_eq!(world.count_component::<A>(), 2);
+		assert_eq!(world.count_component::<CompA>(), 2);
 	}
 
     #[test]
     fn world_reset() {
 		let mut world = create_test_world();
-		assert_eq!(world.count_component::<A>(), 2);
+		assert_eq!(world.count_component::<CompA>(), 2);
 
 		world.reset();
 		// we must re-register all components!
-		world.component::<A>();
-		world.component::<B>();
+		world.component::<CompA>();
+		world.component::<CompB>();
 
-		assert_eq!(world.count_component::<A>(), 0);
+		assert_eq!(world.count_component::<CompA>(), 0);
 	}
 
     #[test]
     fn world_remove_all() {
 		let mut world = create_test_world();
-		assert_eq!(world.count_component::<A>(), 2);
-		world.remove_all_with_component::<A>();
-		assert_eq!(world.count_component::<A>(), 0);
+		assert_eq!(world.count_component::<CompA>(), 2);
+		world.remove_all_with_component::<CompA>();
+		assert_eq!(world.count_component::<CompA>(), 0);
 	}	
 
     #[test]
@@ -637,6 +655,19 @@ mod world_tests {
 		// We can lookup the dynamic Component IDs
 		let position_component: EntityId = world.lookup("Position").unwrap().into();
 		assert_eq!(world.count_component_id(position_component), 1);
+	}
 
+    #[test]
+    fn world_json() {
+		let world = create_test_world();
+		let json = world.to_json();
+		assert_eq!(json.contains("CompA"), true);
+
+		let mut world2 = World::new();
+		world2.component::<CompA>().named("CompA");
+		world2.component::<CompB>().named("CompB");
+
+		world2.from_json(&json);
+		assert_eq!(world.count_component::<CompA>(), 2);
 	}
 }

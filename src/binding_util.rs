@@ -38,3 +38,22 @@ pub unsafe fn flecs_to_rust_str(cstr: *const ::std::os::raw::c_char) -> &'static
     // TODO: How should we best handle this?
     "Error"
 }
+
+pub unsafe fn flecs_to_rust_string(cstr: *const ::std::os::raw::c_char) -> String {
+    if cstr.is_null() {
+        return "".into();
+    }
+
+    // Note we can get strs is coming back with weird numeric encoding
+    // which causes the to_str below to fail. Safe guard against that.
+    // Update: That was due to components not being registered with a proper name (since Fixed)
+    // For now leave this inplace to protect against other bad C strings
+    //
+    let r_str = std::ffi::CStr::from_ptr(cstr);
+    if let Ok(r_str) = r_str.to_str() {
+        return r_str.into();
+    }
+
+    // TODO: How should we best handle this?
+    "".into()
+}
