@@ -79,4 +79,7 @@ Pretty much the same results as for 3.1.4
 ## Flecs 3.2.0 Release (Apr 2023)
 Pretty much the same results as for 3.1.4
 
+## Flecs 3.2.1 Release (Apr 2023)
+Pretty much the same results as for 3.1.4
+
 

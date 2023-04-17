@@ -73,6 +73,10 @@ fn main() {
     let inst = world.entity().named("my_mammoth_freighter")
         .is_a(mammoth_freighter);
 
+	// As of Flecs 3.2.1 the 'uninitialized' Position component started coming back with weird values
+	// so let's initialize it properly. Perhaps we need to wire up default constructor to Flecs lifecycle soon!
+	inst.set(Position { x: 10.0, y: 200.0 });
+
     // Inspect the type of the entity. This outputs:
     //    Position,(Identifier,Name),(IsA,MammothFreighter)
     println!("Instance type: [{}]", inst.type_info().to_str());
