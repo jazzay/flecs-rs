@@ -467,12 +467,12 @@ impl World {
         filter
     }	
 
-	pub fn filter_builder(& self) -> FilterBuilder {
+	pub fn filter_builder(&self) -> FilterBuilder {
 		let filter_builder = FilterBuilder::new(self);
         filter_builder
     }	
 
-	pub fn query(& self) -> QueryBuilder {
+	pub fn query(&self) -> QueryBuilder {
 		let builder = QueryBuilder::new(self);
         builder
     }	
@@ -498,6 +498,27 @@ impl World {
 		let filter: FilterGroup<'a, G> = FilterGroup::new(self);
 		filter.each_mut(cb);
     }	
+
+	/** Load plecs string.
+	 * @see ecs_plecs_from_str
+	 */
+	fn plecs_from_str(&mut self, name: &str, plecs_str: &str) -> i32 {
+		let name_c_str = std::ffi::CString::new(name).unwrap();
+		let plecs_c_str = std::ffi::CString::new(plecs_str).unwrap();
+		unsafe { ecs_plecs_from_str(self.world, 
+			name_c_str.as_ptr() as *const i8, 
+			plecs_c_str.as_ptr() as *const i8) 
+		}
+	}
+
+	/** Load plecs from file.
+	 * @see ecs_plecs_from_file
+	 */
+	fn plecs_from_file(&mut self, filename: &str) -> i32 {
+		let filename_c_str = std::ffi::CString::new(filename).unwrap();
+		unsafe { ecs_plecs_from_file(self.world, filename_c_str.as_ptr() as *const i8) }
+	}
+		
 
 }
 
@@ -575,4 +596,47 @@ mod world_tests {
 		world.remove_all_with_component::<A>();
 		assert_eq!(world.count_component::<A>(), 0);
 	}	
+
+    #[test]
+    fn world_load_plecs() {
+		let mut world = create_test_world();
+		let plecs = r"
+			// To see what the result of parsing this file looks like, copy the code and
+			// paste it into the editor at https://flecs.dev/explorer
+			//
+			using flecs.meta
+			
+			// Create component types, see reflection example
+			Struct Position {
+				x :- {f32}
+				y :- {f32}
+			}
+			
+			Struct Rectangle {
+				width :- {f32}
+				height :- {f32}
+			}
+			
+			// Plecs files can contain variables that can be referenced later on when 
+			// assigning values to components
+			const width = 5
+			
+			// Variables and components can be assigned using expressions. Most arithmetic
+			// and conditional operators are supported.
+			const height = $width * 2
+			
+			e {
+				- Position{0, -($height / 2)}
+				- Rectangle{$width, $height}
+			}		
+		";
+
+		let result = world.plecs_from_str("some_name", plecs);
+		assert_eq!(result, 0);
+
+		// We can lookup the dynamic Component IDs
+		let position_component: EntityId = world.lookup("Position").unwrap().into();
+		assert_eq!(world.count_component_id(position_component), 1);
+
+	}
 }
