@@ -13,11 +13,12 @@ impl World {
 	pub fn new() -> Self {
 		let world = unsafe { ecs_init() };
 		WorldInfoCache::insert(world);
-		//init_builtin_components();
-		Self {
+		let mut w = Self {
 			world,
 			owned: true
-		}
+		};
+		w.init_builtin_components();
+		w
 	}
 
 	pub(crate) fn new_from(world: *mut ecs_world_t) -> Self {
@@ -27,9 +28,45 @@ impl World {
 		}
 	}
 
+	fn init_builtin_components(&mut self) {
+		// TODO: Get access to these components, and determine if component_named 
+		// is sufficient or if these need to be paths?
+		// self.component_named::<Component>("flecs::core::Component");
+		// self.component_named::<Identifier>("flecs::core::Identifier");
+		// self.component_named::<Poly>("flecs::core::Poly");
+	
+		// TODO - register all the module components as well
+		// #   ifdef FLECS_SYSTEM
+		// 	_::system_init(*this);
+		// #   endif
+		// #   ifdef FLECS_TIMER
+		// 	_::timer_init(*this);
+		// #   endif
+		// #   ifdef FLECS_DOC
+		// 	doc::_::init(*this);
+		// #   endif
+		// #   ifdef FLECS_REST
+		// 	rest::_::init(*this);
+		// #   endif
+		// #   ifdef FLECS_META
+		// 	meta::_::init(*this);
+		// #   endif
+	}
+
 	pub fn raw(&self) -> *mut ecs_world_t {
 		self.world
 	}
+
+	/// Deletes and recreates the world
+    pub fn reset(&mut self) {
+		assert!(self.owned);
+        unsafe { 
+			ecs_fini(self.world);
+			self.world = ecs_init();
+			WorldInfoCache::insert(self.world);
+		}
+		self.init_builtin_components();
+    }
 
 	pub fn entity(&self) -> Entity {
 		let entity = unsafe { ecs_new_id(self.world) };
@@ -49,10 +86,27 @@ impl World {
         unsafe { ecs_progress(self.world, delta_time) }
     }	
 
+	/// Get current frame delta time
 	pub fn delta_time(&self) -> f32 {
 		unsafe { 
 			let stats = ecs_get_world_info(self.world).as_ref().unwrap();
 			stats.delta_time
+		}
+	}
+
+	/// Get current tick (in frames)
+	pub fn tick(&self) -> i64 {
+		unsafe { 
+			let stats = ecs_get_world_info(self.world).as_ref().unwrap();
+			stats.frame_count_total
+		}
+	}
+
+	/// Get current simulation time
+	pub fn time(&self) -> f32 {
+		unsafe { 
+			let stats = ecs_get_world_info(self.world).as_ref().unwrap();
+			stats.world_time_total
 		}
 	}
 
@@ -67,6 +121,106 @@ impl World {
      */
     fn should_quit(&self) -> bool {
         unsafe { ecs_should_quit(self.world) }
+    }
+
+    /** Begin frame.
+     * When an application does not use progress() to control the main loop, it
+     * can still use Flecs features such as FPS limiting and time measurements.
+     * This operation needs to be invoked whenever a new frame is about to get 
+     * processed.
+     *
+     * Calls to frame_begin must always be followed by frame_end.
+     *
+     * The function accepts a delta_time parameter, which will get passed to 
+     * systems. This value is also used to compute the amount of time the 
+     * function needs to sleep to ensure it does not exceed the target_fps, when 
+     * it is set. When 0 is provided for delta_time, the time will be measured.
+     *
+     * This function should only be ran from the main thread.
+     *
+     * @param delta_time Time elapsed since the last frame.
+     * @return The provided delta_time, or measured time if 0 was provided.
+     */
+    fn frame_begin(&self, delta_time: f32) -> f32 {
+        unsafe { ecs_frame_begin(self.world, delta_time) }
+    }
+
+    /** End frame. 
+     * This operation must be called at the end of the frame, and always after
+     * ecs_frame_begin.
+     *
+     * This function should only be ran from the main thread.
+     */
+    fn frame_end(&self) {
+        unsafe { ecs_frame_end(self.world); }
+    }
+
+    /** Begin staging.
+     * When an application does not use ecs_progress to control the main loop, it
+     * can still use Flecs features such as the defer queue. When an application
+     * needs to stage changes, it needs to call this function after ecs_frame_begin.
+     * A call to ecs_readonly_begin must be followed by a call to ecs_readonly_end.
+     * 
+     * When staging is enabled, modifications to entities are stored to a stage.
+     * This ensures that arrays are not modified while iterating. Modifications are
+     * merged back to the "main stage" when ecs_readonly_end is invoked.
+     *
+     * While the world is in staging mode, no structural changes (add/remove/...)
+     * can be made to the world itself. Operations must be executed on a stage
+     * instead (see ecs_get_stage).
+     *
+     * This function should only be ran from the main thread.
+     *
+     * @return Whether world is currently staged.
+     */
+    fn readonly_begin(&self) -> bool {
+        unsafe { ecs_readonly_begin(self.world) }
+    }
+
+    /** End staging.
+     * Leaves staging mode. After this operation the world may be directly mutated
+     * again. By default this operation also merges data back into the world, unless
+     * automerging was disabled explicitly.
+     *
+     * This function should only be ran from the main thread.
+     */
+    fn readonly_end(&self) {
+        unsafe { ecs_readonly_end(self.world); }
+    }
+
+    /** Defer operations until end of frame. 
+     * When this operation is invoked while iterating, operations inbetween the
+     * defer_begin and defer_end operations are executed at the end of the frame.
+     *
+     * This operation is thread safe.
+     */
+    fn defer_begin(&self) -> bool {
+        unsafe { ecs_defer_begin(self.world) }
+    }
+
+    /** End block of operations to defer. 
+     * See defer_begin.
+     *
+     * This operation is thread safe.
+     */
+    fn defer_end(&self) -> bool {
+        unsafe { ecs_defer_end(self.world) }
+    }
+
+    /** Test whether deferring is enabled.
+     */
+    fn is_deferred(&self) -> bool {
+        unsafe { ecs_is_deferred(self.world) }
+    }
+
+    /** Test whether the current world object is readonly.
+     * This function allows the code to test whether the currently used world
+     * object is readonly or whether it allows for writing.
+     *
+     * @return True if the world or stage is readonly.
+     */
+    fn is_readonly(&self) -> bool {
+        unsafe { ecs_stage_is_readonly(self.world) }
     }
 
 	pub fn find_entity(&self, entity: EntityId) -> Option<Entity> {
@@ -245,10 +399,68 @@ impl World {
 		register_component_dynamic(self.world, symbol, Some(name), layout)
 	}
 
+    /** Count entities matching a component id.
+     *
+     * @param component_id The component id.
+     */
+    fn count_component_id(&self, component_id: EntityId) -> i32 {
+        unsafe { ecs_count_id(self.world, component_id) }
+    }
+
+    /** Count entities matching a component by type.
+     *
+     * @tparam T The component type.
+     */
+	pub fn count_component<T: 'static>(&self) -> i32 {
+		let component_id = register_component_typed::<T>(self.world, None);
+        unsafe { ecs_count_id(self.world, component_id) }
+	}
+
+    /** Remove all instances of specified component id. */
+    fn remove_all_with_component_id(&mut self, component_id: EntityId) {
+        unsafe { ecs_remove_all(self.world, component_id); }
+    }
+
+    /** Remove all instances of specified component. */
+	pub fn remove_all_with_component<T: 'static>(&mut self) {
+		let component_id = register_component_typed::<T>(self.world, None);
+        unsafe { ecs_remove_all(self.world, component_id); }
+	}
+
+    /** Check if entity id exists in the world.
+     * 
+     * @see ecs_exists
+     */
+    fn exists(&self, e: EntityId) -> bool {
+        unsafe { ecs_exists(self.world, e) }
+    }
+
+    /** Check if entity id exists in the world.
+     *
+     * @see ecs_is_alive
+     */
+    fn is_alive(&self, e: EntityId) -> bool {
+        unsafe { ecs_is_alive(self.world, e) }
+    }
+
+    /** Check if entity id is valid.
+     * Invalid entities cannot be used with API functions.
+     * 
+     * @see ecs_is_valid
+     */
+    fn is_valid(&self, e: EntityId) -> bool {
+        unsafe { ecs_is_valid(self.world, e) }
+    }
+
+	// Systems
+
 	pub fn system(&self) -> SystemBuilder {
 		let sb = SystemBuilder::new(self);
         sb
     }	
+
+
+	// Filters
 
 	pub fn filter<'a, G: ComponentGroup<'a>>(&'a self) -> FilterGroup<'a, G> {
 		let filter: FilterGroup<'a, G> = FilterGroup::new(self);
@@ -317,4 +529,50 @@ impl World {
 				&rest_data as *const EcsRest as *const ::std::os::raw::c_void) 
 		};
 	}
+}
+
+#[cfg(test)]
+mod world_tests {
+	use super::*;
+	struct A { v: i32 }
+	struct B { v: f32 }
+
+	fn create_test_world() -> World {
+		let mut world = World::new();
+
+		world.component::<A>();
+		world.component::<B>();
+	
+		world.entity().set(A { v: 1234 }).set(B { v: 123.0 });
+		world.entity().set(A { v: 2468 }).set(B { v: 99.0 });
+
+		world
+	}
+
+    #[test]
+    fn world_new() {
+		let world = create_test_world();
+		assert_eq!(world.count_component::<A>(), 2);
+	}
+
+    #[test]
+    fn world_reset() {
+		let mut world = create_test_world();
+		assert_eq!(world.count_component::<A>(), 2);
+
+		world.reset();
+		// we must re-register all components!
+		world.component::<A>();
+		world.component::<B>();
+
+		assert_eq!(world.count_component::<A>(), 0);
+	}
+
+    #[test]
+    fn world_remove_all() {
+		let mut world = create_test_world();
+		assert_eq!(world.count_component::<A>(), 2);
+		world.remove_all_with_component::<A>();
+		assert_eq!(world.count_component::<A>(), 0);
+	}	
 }
