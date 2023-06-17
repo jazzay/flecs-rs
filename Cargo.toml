@@ -11,7 +11,12 @@ categories = ["game-engines", "data-structures"]
 rust = "1.68"
 
 [profile.release]
-debug = true
+# debug = true		# Don't accidently submit this!
+
+# This option sadly results in 3X worse performance in Query::iter() on Arm
+#	while the benefit is small in some areas. 
+#	revisit if we can figure out / fix that perf degradation.
+# lto = "fat"
 
 [dependencies]
 lazy_static = "1.4.0"
