@@ -36,6 +36,14 @@ fn main() {
 		let include_flag = String::from("-I") + &include_path[..include_path.len()];
 		println!("Used Include Path: {}", include_path);
 
+
+    // export comments from flecs source
+    let bindings = bindings
+        .generate_comments(true)
+        .clang_arg("-fparse-all-comments")
+        // this yields two small comments
+        .clang_arg("-fretain-comments-from-system-headers");
+
     let bindings = bindings.generate().expect("Unable to generate bindings");
 
     // We generate bindings to an actual source file so that we get better IDE integration
