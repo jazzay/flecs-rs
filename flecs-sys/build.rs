@@ -57,6 +57,11 @@ fn main() {
 
 	// Compile flecs C right into our Rust crate
 	cc::Build::new()
+		.warnings(true)
+		.extra_warnings(true)
+		.define("NDEBUG", None)
+		// .flag("-flto")			// no impact on Arm. Perhaps useful to other archs.
+		// .flag("-fuse-ld=lld")	// not available on MacOS/Arm
 		.file("flecs.c")
 		.compile("flecs");	
 

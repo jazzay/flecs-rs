@@ -1,12 +1,12 @@
 use flecs_sys::bindings::*;
 use crate::Component;
 
-lazy_static::lazy_static! {
-    pub(crate) static ref NAME_SEP: std::ffi::CString = {
-		let sep = std::ffi::CString::new("::").unwrap();
-		sep
-    };
-}
+use once_cell::sync::Lazy;
+
+pub(crate) static NAME_SEP: Lazy<std::ffi::CString> = Lazy::new(|| {
+    let sep = std::ffi::CString::new("::").unwrap();
+    sep
+});
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Impl some flecs Macro like functions that do not bindgen

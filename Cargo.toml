@@ -23,13 +23,25 @@ categories = ["game-engines", "data-structures"]
 rust-version = "1.68"
 
 [profile.release]
-debug = true
+# debug = true		# Don't accidently submit this!
+
+# This option sadly results in 3X worse performance in Query::iter() on Arm
+#	while the benefit is small in some areas. 
+#	revisit if we can figure out / fix that perf degradation.
+# lto = "fat"
 
 [dependencies]
-lazy_static = "1.4.0"
+once_cell = "1.18"
+
+[build-dependencies]
+bindgen = "0.66"
+c = "1"
 
 [dev-dependencies]
-flecs-api = { path = "flecs-api" }
+hecs = "0.10.3"
+bevy_ecs = "0.10.1"
+flax = "0.4.0"
+criterion = "0.5"
 
 [[example]]
 name = "entity_basics"
