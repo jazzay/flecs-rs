@@ -36,33 +36,33 @@ fn main() {
 		let include_flag = String::from("-I") + &include_path[..include_path.len()];
 		println!("Used Include Path: {}", include_path);
 
-		bindings = bindings.clang_arg(include_flag);
-	}
-	
-	let bindings = bindings
-		.generate()
-		.expect("Unable to generate bindings");
+    let bindings = bindings.generate().expect("Unable to generate bindings");
 
-	// We generate bindings to an actual source file so that we get better IDE integration
-	// Sadly to publish on crates.io we cannot write outside the OUT_DIR revisit this later.
-	// let out_path = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-	// bindings
-	// 	.write_to_file(out_path.join("src/bindings.rs"))
-	// 	.expect("Couldn't write bindings!");
+    // We generate bindings to an actual source file so that we get better IDE integration
+    // Sadly to publish on crates.io we cannot write outside the OUT_DIR revisit this later.
+    // let out_path = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+    // bindings
+    // 	.write_to_file(out_path.join("src/bindings.rs"))
+    // 	.expect("Couldn't write bindings!");
 
-	let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
-	bindings
-		.write_to_file(out_path.join("bindings.rs"))
-		.expect("Couldn't write bindings!");
+    let bindings_generated = bindings.to_string();
+    if cfg!(feature = "export_bindings") {
+        let out_path: PathBuf = env::var("CARGO_MANIFEST_DIR").unwrap().into();
+        std::fs::write(out_path.join("bindings.rs"), bindings_generated.clone())
+            .expect("Couldn't write bindings!");
+    }
 
-	// Compile flecs C right into our Rust crate
-	cc::Build::new()
-		.warnings(true)
-		.extra_warnings(true)
-		.define("NDEBUG", None)
-		// .flag("-flto")			// no impact on Arm. Perhaps useful to other archs.
-		// .flag("-fuse-ld=lld")	// not available on MacOS/Arm
-		.file("flecs.c")
-		.compile("flecs");	
+    let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
+    std::fs::write(out_path.join("bindings.rs"), bindings_generated)
+        .expect("Couldn't write bindings!");
 
+    // Compile flecs C right into our Rust crate
+    cc::Build::new()
+        .warnings(true)
+        .extra_warnings(true)
+        .define("NDEBUG", None)
+        // .flag("-flto")			// no impact on Arm. Perhaps useful to other archs.
+        // .flag("-fuse-ld=lld")	// not available on MacOS/Arm
+        .file("flecs.c")
+        .compile("flecs");
 }

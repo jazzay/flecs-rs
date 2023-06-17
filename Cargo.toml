@@ -31,6 +31,9 @@ bevy_ecs = "0.10.1"
 flax = "0.4.0"
 criterion = "0.5"
 
+[features]
+export_bindings = []
+
 [[example]]
 name="entity_basics"
 path = "examples/entity/basics.rs"
