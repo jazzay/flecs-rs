@@ -61,15 +61,15 @@ pub use world::*;
 // This Rust binding for flecs is a WIP!!!
 //
 // Possible TODOs:
-// - audit & fix up ALL string usages. rust -> C must null terminate!
-// - change all get<> component funcs to return Option<>?
-// - validate that term components were named earlier in chain?
-// - We can only safely store primitives and raw pointer types within
+// - [ ] audit & fix up ALL string usages. rust -> C must null terminate!
+// - [ ] change all get<> component funcs to return Option<>?
+// - [ ] validate that term components were named earlier in chain?
+// - [ ] We can only safely store primitives and raw pointer types within
 //		components currently, due to how the raw memory is inserted/moved
 //		need to look in to hooking the lifecycle support to rust, etc
 //		This could become a bit of a deal breaker for idiomatic rust
 // 		component storage if not solved
-// - Implement proper Rusty Query / System APIs that use Tuple generics
+// - [ ] Implement proper Rusty Query / System APIs that use Tuple generics
 
 pub trait Component: 'static {}
 impl<T> Component for T where T: 'static {}
