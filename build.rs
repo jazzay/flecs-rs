@@ -36,13 +36,16 @@ fn main() {
 		let include_flag = String::from("-I") + &include_path[..include_path.len()];
 		println!("Used Include Path: {}", include_path);
 
+        bindings = bindings.clang_arg(include_flag);
+    }
 
     // export comments from flecs source
     let bindings = bindings
         .generate_comments(true)
         .clang_arg("-fparse-all-comments")
         // this yields two small comments
-        .clang_arg("-fretain-comments-from-system-headers");
+        .clang_arg("-fretain-comments-from-system-headers")
+        .parse_callbacks(Box::new(CommentsCallbacks));
 
     let bindings = bindings.generate().expect("Unable to generate bindings");
 
@@ -73,4 +76,27 @@ fn main() {
         // .flag("-fuse-ld=lld")	// not available on MacOS/Arm
         .file("flecs.c")
         .compile("flecs");
+}
+
+#[derive(Debug)]
+struct CommentsCallbacks;
+
+impl bindgen::callbacks::ParseCallbacks for CommentsCallbacks {
+    fn process_comment(&self, comment: &str) -> Option<String> {
+        // 1: trimming the comments
+        let comment = comment.trim();
+        // 2: brackets do not entail intra-links
+        let comment = comment.replace("[", "\\[");
+        let comment = comment.replace("]", "\\]");
+
+        // ensure all links are padded with < and >
+        let url_re = regex::Regex::new(r"(?P<url>https?://[^\s]+)").unwrap();
+        let comment = url_re
+            .replace_all(comment.as_str(), |caps: &regex::Captures| {
+                format!("<{}>", &caps["url"])
+            })
+            .into_owned();
+
+        Some(comment)
+    }
 }
