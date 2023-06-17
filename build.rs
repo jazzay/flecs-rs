@@ -47,7 +47,11 @@ fn main() {
         .clang_arg("-fretain-comments-from-system-headers")
         .parse_callbacks(Box::new(CommentsCallbacks));
 
-    let bindings = bindings.generate().expect("Unable to generate bindings");
+    let bindings = bindings
+        .allowlist_file("flecs.c")
+        .allowlist_file("flecs.h")
+        .generate()
+        .expect("Unable to generate bindings");
 
     // We generate bindings to an actual source file so that we get better IDE integration
     // Sadly to publish on crates.io we cannot write outside the OUT_DIR revisit this later.
