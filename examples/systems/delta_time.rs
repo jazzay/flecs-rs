@@ -1,4 +1,4 @@
-use flecs::*;
+use flecs_api::*;
 
 fn main() {
 	let world = World::new();

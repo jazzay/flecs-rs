@@ -1,4 +1,4 @@
-use flecs::*;
+use flecs_api::*;
 
 // TODO
 // Update iteration APIs (each, etc) to support mutable component refs

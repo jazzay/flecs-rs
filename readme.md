@@ -12,8 +12,7 @@ Wraps native Flecs v3.2.1
 ## A Simple Example
 
 ```rust
-use flecs::*;
-
+use flecs_api::*;
 #[derive(Default, Debug, PartialEq)]
 struct Position {
     x: f32,

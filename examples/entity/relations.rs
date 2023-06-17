@@ -1,4 +1,4 @@
-use flecs::*;
+use flecs_api::*;
 
 // TODO
 // - Extend the various add_relation overloads to support <T>, id as well

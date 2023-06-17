@@ -1,4 +1,4 @@
-use flecs::*;
+use flecs_api::*;
 
 #[derive(Default, Debug, PartialEq)]
 struct Position {
@@ -50,7 +50,7 @@ fn main() {
     alice.remove::<Walking>();
 
     // Iterate all entities with Position
-    world.each1(|e: flecs::Entity, p: &Position| {
+    world.each1(|e: Entity, p: &Position| {
         println!("{}: {}, {}", e.name(), p.x, p.y);
     });
 }

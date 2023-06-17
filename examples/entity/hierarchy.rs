@@ -1,4 +1,4 @@
-use flecs::*;
+use flecs_api::*;
 
 #[derive(Copy, Clone, Default, Debug, PartialEq)]
 struct Position {

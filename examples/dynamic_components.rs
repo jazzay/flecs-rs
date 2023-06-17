@@ -1,5 +1,5 @@
 use std::alloc::Layout;
-use flecs::*;
+use flecs_api::*;
 
 #[derive(Default, Debug, PartialEq)]
 struct Position {

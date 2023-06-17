@@ -1,4 +1,4 @@
-use flecs::*;
+use flecs_api::*;
 
 // TODO
 // - Add Generic component API to Systems
