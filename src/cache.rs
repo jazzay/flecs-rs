@@ -21,93 +21,91 @@ use std::{any::TypeId, collections::HashMap, sync::Mutex};
 // assume that same ID again...
 
 lazy_static::lazy_static! {
-    static ref WORLD_INFOS: Mutex<HashMap<WorldKey, WorldInfoCache>> = {
-        let m = HashMap::new();
-        Mutex::new(m)
-    };
+	static ref WORLD_INFOS: Mutex<HashMap<WorldKey, WorldInfoCache>> = {
+		let m = HashMap::new();
+		Mutex::new(m)
+	};
 }
 
 type WorldKey = u64; //*mut ecs_world_t;
 
 #[derive(Copy, Clone, Debug)]
 pub(crate) struct ComponentInfo {
-    pub(crate) id: u64,
-    pub(crate) size: usize,
+	pub(crate) id: u64,
+	pub(crate) size: usize,
 }
 
 pub(crate) struct WorldInfoCache {
-    component_typeid_map: HashMap<TypeId, u64>,
-    component_symbol_map: HashMap<&'static str, ComponentInfo>,
+	component_typeid_map: HashMap<TypeId, u64>,
+	component_symbol_map: HashMap<&'static str, ComponentInfo>,
 }
 
 impl WorldInfoCache {
-    pub(crate) fn insert(world: *mut ecs_world_t) {
-        let cache = WorldInfoCache {
-            component_typeid_map: HashMap::new(),
-            component_symbol_map: HashMap::new(),
-        };
+	pub(crate) fn insert(world: *mut ecs_world_t) {
+		let cache = WorldInfoCache {
+			component_typeid_map: HashMap::new(),
+			component_symbol_map: HashMap::new(),
+		};
 
-        let world_key = Self::key_for_world(world);
-        let mut m = WORLD_INFOS.lock().unwrap();
-        m.insert(world_key, cache);
-    }
+		let world_key = Self::key_for_world(world);
+		let mut m = WORLD_INFOS.lock().unwrap();
+		m.insert(world_key, cache);
+	}
 
-    fn key_for_world(world: *mut ecs_world_t) -> u64 {
-        assert!(world != std::ptr::null_mut());
+	fn key_for_world(world: *mut ecs_world_t) -> u64 {
+		assert!(world != std::ptr::null_mut());
 
-        // Note: flecs dupes the world for execution within systems to prevent
-        // writing to the real world, so all mutable operations are deferred. This
-        // results in multiple worlds so we must lookup the actual world via ecs_get_world(m_world)
-        // so we can gain access to our cached component IDs.
-        let actual_world = unsafe { ecs_get_world(world as *const ecs_poly_t) };
-        actual_world as u64
-    }
+		// Note: flecs dupes the world for execution within systems to prevent
+		// writing to the real world, so all mutable operations are deferred. This
+		// results in multiple worlds so we must lookup the actual world via ecs_get_world(m_world)
+		// so we can gain access to our cached component IDs.
+		let actual_world = unsafe { ecs_get_world(world as *const ecs_poly_t) };
+		actual_world as u64
+	}
 
-    pub fn get_component_id_for_type<T: Component>(
-        world: *mut ecs_world_t,
-    ) -> Option<ecs_entity_t> {
-        let world_key = Self::key_for_world(world);
-        let m = WORLD_INFOS.lock().unwrap();
-        let cache = m.get(&world_key).unwrap(); //.clone();
+	pub fn get_component_id_for_type<T: Component>(
+		world: *mut ecs_world_t,
+	) -> Option<ecs_entity_t> {
+		let world_key = Self::key_for_world(world);
+		let m = WORLD_INFOS.lock().unwrap();
+		let cache = m.get(&world_key).unwrap(); //.clone();
 
-        let type_id = TypeId::of::<T>();
-        let comp_id = cache.component_typeid_map.get(&type_id).map(|v| *v);
-        comp_id
-    }
+		let type_id = TypeId::of::<T>();
+		let comp_id = cache.component_typeid_map.get(&type_id).map(|v| *v);
+		comp_id
+	}
 
-    pub fn register_component_id_for_type_id(
-        world: *mut ecs_world_t,
-        comp_id: ecs_entity_t,
-        type_id: TypeId,
-    ) {
-        let world_key = Self::key_for_world(world);
-        let mut m = WORLD_INFOS.lock().unwrap();
-        let cache = m.get_mut(&world_key).unwrap(); //.clone();
+	pub fn register_component_id_for_type_id(
+		world: *mut ecs_world_t,
+		comp_id: ecs_entity_t,
+		type_id: TypeId,
+	) {
+		let world_key = Self::key_for_world(world);
+		let mut m = WORLD_INFOS.lock().unwrap();
+		let cache = m.get_mut(&world_key).unwrap(); //.clone();
 
-        cache.component_typeid_map.insert(type_id, comp_id);
-    }
+		cache.component_typeid_map.insert(type_id, comp_id);
+	}
 
-    pub fn get_component_id_for_symbol(
-        world: *mut ecs_world_t,
-        symbol: &'static str,
-    ) -> Option<ComponentInfo> {
-        let world_key = Self::key_for_world(world);
-        let m = WORLD_INFOS.lock().unwrap();
-        let cache = m.get(&world_key).unwrap();
-        cache.component_symbol_map.get(symbol).map(|v| *v)
-    }
+	pub fn get_component_id_for_symbol(
+		world: *mut ecs_world_t,
+		symbol: &'static str,
+	) -> Option<ComponentInfo> {
+		let world_key = Self::key_for_world(world);
+		let m = WORLD_INFOS.lock().unwrap();
+		let cache = m.get(&world_key).unwrap();
+		cache.component_symbol_map.get(symbol).map(|v| *v)
+	}
 
-    pub fn register_component_id_for_symbol(
-        world: *mut ecs_world_t,
-        comp_id: ecs_entity_t,
-        symbol: &'static str,
-        size: usize,
-    ) {
-        let world_key = Self::key_for_world(world);
-        let mut m = WORLD_INFOS.lock().unwrap();
-        let cache = m.get_mut(&world_key).unwrap();
-        cache
-            .component_symbol_map
-            .insert(symbol, ComponentInfo { id: comp_id, size });
-    }
+	pub fn register_component_id_for_symbol(
+		world: *mut ecs_world_t,
+		comp_id: ecs_entity_t,
+		symbol: &'static str,
+		size: usize,
+	) {
+		let world_key = Self::key_for_world(world);
+		let mut m = WORLD_INFOS.lock().unwrap();
+		let cache = m.get_mut(&world_key).unwrap();
+		cache.component_symbol_map.insert(symbol, ComponentInfo { id: comp_id, size });
+	}
 }
