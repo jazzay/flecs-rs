@@ -23,8 +23,8 @@ use std::{any::TypeId, collections::HashMap, sync::Mutex};
 // assume that same ID again...
 
 static WORLD_INFOS: Lazy<Mutex<HashMap<WorldKey, WorldInfoCache>>> = Lazy::new(|| {
-    let m = HashMap::new();
-    Mutex::new(m)
+	let m = HashMap::new();
+	Mutex::new(m)
 });
 
 type WorldKey = u64; //*mut ecs_world_t;

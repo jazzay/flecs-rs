@@ -6,8 +6,8 @@ pub struct Query {
 }
 
 impl Query {
-	// TODO - performance is poor in these each methods compared to iter (by 20x) 
-	// due to looking up terms for each tuple entry * each entity. We need to rework this 
+	// TODO - performance is poor in these each methods compared to iter (by 20x)
+	// due to looking up terms for each tuple entry * each entity. We need to rework this
 	// to take slices of components, determined outside the loop so optimal iteration can occur
 	//
 	pub fn each<'w, G: ComponentGroup<'w>>(&'w self, mut cb: impl FnMut(Entity, G::RefTuple)) {
@@ -34,8 +34,8 @@ impl Query {
 			while ecs_query_next(&mut it) {
 				// Iterate all entities for the type
 				for i in 0..it.count {
-                    let eid = it.entities.offset(i as isize).as_ref().unwrap();
-                    let e = Entity::new(self.world, *eid);
+					let eid = it.entities.offset(i as isize).as_ref().unwrap();
+					let e = Entity::new(self.world, *eid);
 					let rt = G::iter_as_mut_tuple(&it, i as isize);
 					cb(e, rt);
 				}
