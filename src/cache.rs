@@ -1,3 +1,5 @@
+use once_cell::sync::Lazy;
+
 use crate::bindings::*;
 use crate::Component;
 use std::{any::TypeId, collections::HashMap, sync::Mutex};
@@ -16,16 +18,14 @@ use std::{any::TypeId, collections::HashMap, sync::Mutex};
 // This might help
 // https://docs.rs/generic_static/0.2.0/generic_static/
 // Issue with statics however is then we don't get per world comp ids
-// and registering is done on the world... we would have to follow the 
+// and registering is done on the world... we would have to follow the
 // C++ impl and detect that component was already registered prior and
 // assume that same ID again...
 
-lazy_static::lazy_static! {
-    static ref WORLD_INFOS: Mutex<HashMap<WorldKey, WorldInfoCache>> = {
-        let m = HashMap::new();
-		Mutex::new(m)
-    };
-}
+static WORLD_INFOS: Lazy<Mutex<HashMap<WorldKey, WorldInfoCache>>> = Lazy::new(|| {
+    let m = HashMap::new();
+    Mutex::new(m)
+});
 
 type WorldKey = u64;	//*mut ecs_world_t;
 
