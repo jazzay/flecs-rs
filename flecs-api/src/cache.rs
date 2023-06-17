@@ -1,4 +1,4 @@
-use crate::bindings::*;
+use flecs_sys::bindings::*;
 use crate::Component;
 use std::{any::TypeId, collections::HashMap, sync::Mutex};
 

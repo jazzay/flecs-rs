@@ -264,7 +264,7 @@ mod flax_bench {
 
 mod flecs_bench {
 	use super::*;
-	use flecs::*;
+	use flecs_api::*;
 
 	#[derive(Copy, Clone, Default, Debug, PartialEq)]
 	struct Position {

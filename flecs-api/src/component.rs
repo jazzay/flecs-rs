@@ -1,4 +1,6 @@
 use std::alloc::Layout;
+use std::any::TypeId;
+use std::mem::MaybeUninit;
 
 use crate::*;
 use crate::cache::WorldInfoCache;

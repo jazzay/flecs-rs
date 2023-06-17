@@ -1,3 +1,5 @@
+use std::mem::MaybeUninit;
+
 use crate::*;
 
 pub struct Query {

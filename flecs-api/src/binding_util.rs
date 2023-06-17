@@ -1,4 +1,4 @@
-use crate::bindings::*;
+use flecs_sys::bindings::*;
 use crate::Component;
 
 lazy_static::lazy_static! {
