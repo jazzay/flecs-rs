@@ -2,27 +2,29 @@ use flecs::*;
 
 #[derive(Default, Debug, PartialEq)]
 struct Position {
-	x: f32,
-	y: f32,
+    x: f32,
+    y: f32,
 }
 
 #[derive(Default, Debug, PartialEq)]
-struct Walking { }
+struct Walking {}
 
 fn main() {
-	println!("Entity Basics starting...");
+    println!("Entity Basics starting...");
 
-	let mut world = World::new();
+    let mut world = World::new();
 
     // We have to manually register all components
-	world.component::<Position>();
-	world.component::<Walking>();
+    world.component::<Position>();
+    world.component::<Walking>();
 
     // Create an entity with name Bob
-    let bob = world.entity().named("Bob")
+    let bob = world
+        .entity()
+        .named("Bob")
         // The set operation finds or creates a component, and sets it.
         // Components are automatically registered with the world.
-        .set::<Position>(Position { x: 10.0, y: 20.0 }) 
+        .set::<Position>(Position { x: 10.0, y: 20.0 })
         // The add operation adds a component without setting a value. This is
         // useful for tags, or when adding a component with its default value.
         .add::<Walking>();
@@ -36,7 +38,9 @@ fn main() {
     println!("Bob position: {}, {}", pos.x, pos.y);
 
     // Create another named entity
-    let alice = world.entity().named("Alice")
+    let alice = world
+        .entity()
+        .named("Alice")
         .set::<Position>(Position { x: 10.0, y: 20.0 });
 
     // Add a tag after entity is created
@@ -59,6 +63,6 @@ fn main() {
 mod tests {
     #[test]
     fn flecs_entity_basics() {
-		super::main();
-	}
+        super::main();
+    }
 }

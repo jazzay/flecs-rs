@@ -5,15 +5,15 @@ use flecs::*;
 // - figure out relation iteration overloads
 
 // Type used for Eats relation
-struct Eats { }
+struct Eats {}
 
 fn main() {
-	println!("Entity Relations starting...");
+    println!("Entity Relations starting...");
 
-	let mut world = World::new();
+    let mut world = World::new();
 
     // We have to manually register all components
-	let eats_id = world.component_named::<Eats>("Eats");
+    let eats_id = world.component_named::<Eats>("Eats");
 
     // Entity used for Grows relation
     let grows = world.entity().named("Grows");
@@ -24,7 +24,9 @@ fn main() {
 
     // Create an entity with 3 relations. Relations are like regular components,
     // but combine two types/identifiers into an (relation, object) pair.
-    let bob = world.entity().named("Bob")
+    let bob = world
+        .entity()
+        .named("Bob")
         // Pairs can be constructed from a type and entity
         // .add_relation::<Eats>(apples)
         .add_relation_ids(eats_id, apples)
@@ -58,6 +60,6 @@ fn main() {
 mod tests {
     #[test]
     fn flecs_entity_relations() {
-		super::main();
-	}
+        super::main();
+    }
 }
