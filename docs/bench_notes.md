@@ -99,3 +99,40 @@ Pretty much the same results as for 3.1.4
 ## Flecs 3.2.1 Release (Apr 2023)
 
 Pretty much the same results as for 3.1.4
+
+## June 17, 2023
+
+CC Optimizations thanks to TransmogrificationDevice [gH]
+
+By simply setting NDEBUG = None we get huge gain of 60 - 70%!
+
+Benchmarking simple_insert/flecs: Collecting 100 samples in estimated 7.1483 s (300 iterati
+simple_insert/flecs     time:   [23.438 ms 23.523 ms 23.615 ms]
+                        change: [-60.236% -60.047% -59.852%] (p = 0.00 < 0.05)
+                        Performance has improved.
+
+Benchmarking simple_iter/flecs_each: Collecting 100 samples in estimated 5.6289 s (25k iter
+simple_iter/flecs_each  time:   [221.89 µs 222.18 µs 222.54 µs]
+                        change: [-69.932% -69.849% -69.764%] (p = 0.00 < 0.05)
+                        Performance has improved.
+
+- simple_insert/flecs - 23.523 ms		60% savings!
+- simple_iter/flecs_each - 222.18 µs	70% savings!
+- simple_iter/flecs_iter - 34.970 µs
+
+After lto = "fat"
+
+Benchmarking simple_insert/flecs: Collecting 100 samples in estimated 6.9128 s (300 iterati
+simple_insert/flecs     time:   [22.986 ms 23.063 ms 23.149 ms]
+                        change: [-2.1922% -1.7339% -1.2837%] (p = 0.00 < 0.05)
+                        Performance has improved.
+
+Benchmarking simple_iter/flecs_each: Collecting 100 samples in estimated 5.0352 s (30k iter
+simple_iter/flecs_each  time:   [166.63 µs 167.13 µs 167.77 µs]
+                        change: [-24.713% -24.435% -24.117%] (p = 0.00 < 0.05)
+                        Performance has improved.
+
+Benchmarking simple_iter/flecs_iter: Collecting 100 samples in estimated 5.6149 s (35k iter
+simple_iter/flecs_iter  time:   [156.15 µs 157.05 µs 157.89 µs]
+                        change: [+347.81% +349.92% +351.82%] (p = 0.00 < 0.05)
+                        Performance has regressed.

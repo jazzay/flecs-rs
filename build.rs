@@ -52,5 +52,12 @@ fn main() {
 	bindings.write_to_file(out_path.join("bindings.rs")).expect("Couldn't write bindings!");
 
 	// Compile flecs C right into our Rust crate
-	cc::Build::new().file("flecs.c").compile("flecs");
+	cc::Build::new()
+		.warnings(true)
+		.extra_warnings(true)
+		.define("NDEBUG", None)
+		// .flag("-flto")			// no impact on Arm. Perhaps useful to other archs.
+		// .flag("-fuse-ld=lld")	// not available on MacOS/Arm
+		.file("flecs.c")
+		.compile("flecs");
 }
