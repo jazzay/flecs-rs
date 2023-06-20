@@ -1,7 +1,7 @@
 use once_cell::sync::Lazy;
 
-use crate::bindings::*;
 use crate::Component;
+use flecs_sys::*;
 use std::{any::TypeId, collections::HashMap, sync::Mutex};
 
 // TODO: Revisit how we cache the runtime Component IDs per type

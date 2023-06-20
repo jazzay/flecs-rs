@@ -1,8 +1,20 @@
 [package]
 name = "flecs"
+description = "Rust bindings for the Flecs Entity Component System"
+version.workspace = true
+edition.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[workspace]
+members = ["flecs-sys"]
+resolver = "2"
+
+[workspace.package]
 version = "0.1.3"
 edition = "2021"
-description = "Rust bindings for the Flecs Entity Component System"
 homepage = "https://www.flecs.dev"
 repository = "https://github.com/jazzay/flecs-rs"
 license = "MIT"
@@ -19,11 +31,8 @@ rust-version = "1.68"
 # lto = "fat"
 
 [dependencies]
+flecs-sys = { path = "flecs-sys" }
 once_cell = "1.18"
-
-[build-dependencies]
-bindgen = "0.66"
-cc = "1"
 
 [dev-dependencies]
 hecs = "0.10.3"

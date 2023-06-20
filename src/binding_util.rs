@@ -1,5 +1,5 @@
-use crate::bindings::*;
 use crate::Component;
+use flecs_sys::*;
 
 use once_cell::sync::Lazy;
 
