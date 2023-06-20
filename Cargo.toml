@@ -31,7 +31,7 @@ rust-version = "1.68"
 # lto = "fat"
 
 [dependencies]
-flecs-sys = { path = "flecs-sys" }
+flecs-sys = { path = "flecs-sys", version = "*" }
 once_cell = "1.18"
 
 [dev-dependencies]
