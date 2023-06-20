@@ -74,9 +74,9 @@ impl Id {
 
 		let e = ecs_pair_relation(self.id);
 		if !self.world.is_null() {
-			return Entity::new(self.world, unsafe { ecs_get_alive(self.world, e) });
+			Entity::new(self.world, unsafe { ecs_get_alive(self.world, e) })
 		} else {
-			return Entity::new(std::ptr::null_mut(), e);
+			Entity::new(std::ptr::null_mut(), e)
 		}
 	}
 
@@ -85,15 +85,15 @@ impl Id {
 
 		let e = ecs_pair_object(self.id);
 		if !self.world.is_null() {
-			return Entity::new(self.world, unsafe { ecs_get_alive(self.world, e) });
+			Entity::new(self.world, unsafe { ecs_get_alive(self.world, e) })
 		} else {
-			return Entity::new(std::ptr::null_mut(), e);
+			Entity::new(std::ptr::null_mut(), e)
 		}
 	}
 
 	/* Test if id has any role */
 	pub fn has_flags(&self) -> bool {
-		return (self.id & RUST_ECS_ID_FLAGS_MASK) != 0;
+		(self.id & RUST_ECS_ID_FLAGS_MASK) != 0
 	}
 
 	pub fn flags(&self) -> Entity {

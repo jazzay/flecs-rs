@@ -11,11 +11,7 @@ pub struct World {
 impl World {
 	/// Creates a new Flecs World instance
 	pub fn new() -> Self {
-		let world = unsafe { ecs_init() };
-		WorldInfoCache::insert(world);
-		let mut w = Self { world, owned: true };
-		w.init_builtin_components();
-		w
+		Self::default()
 	}
 
 	pub(crate) fn new_from(world: *mut ecs_world_t) -> Self {
@@ -255,19 +251,19 @@ impl World {
 		}
 
 		let comp_id = self.id::<T>().unwrap();
-		let entity = comp_id.clone(); // entity = the component for singleton
+		let entity = comp_id; // entity = the component for singleton
 		self.set(entity, value);
 	}
 
 	/// Get a singleton component mutably
-	pub fn get_singleton_mut<'a, T: Component>(&'a mut self) -> Option<&'a mut T> {
+	pub fn get_singleton_mut<T: Component>(&mut self) -> Option<&mut T> {
 		// insert the singleton type automatically if necessary
 		if self.id::<T>().is_none() {
 			self.component::<T>();
 		}
 
 		let comp_id = self.id::<T>().unwrap();
-		let entity = comp_id.clone(); // entity = the component for singleton
+		let entity = comp_id; // entity = the component for singleton
 
 		let dest = unsafe { ecs_get_mut_id(self.world, entity.raw(), comp_id.raw()) };
 
@@ -278,20 +274,20 @@ impl World {
 	}
 
 	/// Get a singleton component
-	pub fn get_singleton<'a, T: Component>(&'a self) -> Option<&'a T> {
+	pub fn get_singleton<T: Component>(&self) -> Option<&T> {
 		let comp = self.id::<T>().expect("singleton entity does not exist");
-		let entity = comp.clone(); // entity = the component for singleton
+		let entity = comp; // entity = the component for singleton
 		self.get_internal::<T>(entity, comp.raw())
 	}
 
 	// TODO: should we make this return an option over panicing?
-	pub fn get<'a, T: Component>(&'a self, entity: Entity) -> Option<&'a T> {
+	pub fn get<T: Component>(&self, entity: Entity) -> Option<&T> {
 		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world)
 			.expect("Component type not registered!");
 		self.get_internal::<T>(entity, comp_id)
 	}
 
-	fn get_internal<'a, T: Component>(&'a self, entity: Entity, comp: u64) -> Option<&'a T> {
+	fn get_internal<T: Component>(&self, entity: Entity, comp: u64) -> Option<&T> {
 		let value = unsafe { ecs_get_id(self.world, entity.raw(), comp) };
 		if value.is_null() {
 			return None;
@@ -323,7 +319,7 @@ impl World {
 		};
 
 		if data.len() == dest.len() {
-			dest.copy_from_slice(&data);
+			dest.copy_from_slice(data);
 		} else {
 			// return an error?
 			//warn!("set_component: component size mismatch. {} != {}", data.len(), dest.len());
@@ -376,9 +372,8 @@ impl World {
 	}
 
 	pub fn component_id<T: Component>(&mut self) -> u64 {
-		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world)
-			.expect("Component type not registered!");
-		comp_id
+		WorldInfoCache::get_component_id_for_type::<T>(self.world)
+			.expect("Component type not registered!")
 	}
 
 	pub fn component<T: 'static>(&mut self) -> Entity {
@@ -550,6 +545,16 @@ impl World {
 	}
 }
 
+impl Default for World {
+	fn default() -> Self {
+		let world = unsafe { ecs_init() };
+		WorldInfoCache::insert(world);
+		let mut w = Self { world, owned: true };
+		w.init_builtin_components();
+		w
+	}
+}
+
 impl Drop for World {
 	fn drop(&mut self) {
 		unsafe {
@@ -565,7 +570,7 @@ impl Drop for World {
 // Additional Add-ons support
 impl World {
 	pub fn enable_rest(&self) {
-		let rest_comp_id = unsafe { FLECS__EEcsRest as u64 };
+		let rest_comp_id = unsafe { FLECS__EEcsRest };
 		let rest_comp_size = std::mem::size_of::<EcsRest>();
 
 		let rest_data: EcsRest = unsafe { MaybeUninit::zeroed().assume_init() };
@@ -635,35 +640,35 @@ mod world_tests {
 	fn world_load_plecs() {
 		let mut world = create_test_world();
 		let plecs = r"
-			// To see what the result of parsing this file looks like, copy the code and
-			// paste it into the editor at https://flecs.dev/explorer
-			//
-			using flecs.meta
-			
-			// Create component types, see reflection example
-			Struct Position {
-				x :- {f32}
-				y :- {f32}
-			}
-			
-			Struct Rectangle {
-				width :- {f32}
-				height :- {f32}
-			}
-			
-			// Plecs files can contain variables that can be referenced later on when 
-			// assigning values to components
-			const width = 5
-			
-			// Variables and components can be assigned using expressions. Most arithmetic
-			// and conditional operators are supported.
-			const height = $width * 2
-			
-			e {
-				- Position{0, -($height / 2)}
-				- Rectangle{$width, $height}
-			}		
-		";
+            // To see what the result of parsing this file looks like, copy the code and
+            // paste it into the editor at https://flecs.dev/explorer
+            //
+            using flecs.meta
+            
+            // Create component types, see reflection example
+            Struct Position {
+                x :- {f32}
+                y :- {f32}
+            }
+            
+            Struct Rectangle {
+                width :- {f32}
+                height :- {f32}
+            }
+            
+            // Plecs files can contain variables that can be referenced later on when 
+            // assigning values to components
+            const width = 5
+            
+            // Variables and components can be assigned using expressions. Most arithmetic
+            // and conditional operators are supported.
+            const height = $width * 2
+            
+            e {
+                - Position{0, -($height / 2)}
+                - Rectangle{$width, $height}
+            }		
+        ";
 
 		let result = world.plecs_from_str("some_name", plecs);
 		assert_eq!(result, 0);
@@ -677,7 +682,7 @@ mod world_tests {
 	fn world_json() {
 		let world = create_test_world();
 		let json = world.to_json();
-		assert_eq!(json.contains("CompA"), true);
+		assert!(json.contains("CompA"));
 
 		let mut world2 = World::new();
 		world2.component::<CompA>().named("CompA");

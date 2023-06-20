@@ -53,7 +53,7 @@ impl WorldInfoCache {
 	}
 
 	fn key_for_world(world: *mut ecs_world_t) -> u64 {
-		assert!(world != std::ptr::null_mut());
+		assert!(world.is_null());
 
 		// Note: flecs dupes the world for execution within systems to prevent
 		// writing to the real world, so all mutable operations are deferred. This
@@ -71,7 +71,7 @@ impl WorldInfoCache {
 		let cache = m.get(&world_key).unwrap(); //.clone();
 
 		let type_id = TypeId::of::<T>();
-		let comp_id = cache.component_typeid_map.get(&type_id).map(|v| *v);
+		let comp_id = cache.component_typeid_map.get(&type_id).copied();
 		comp_id
 	}
 
@@ -94,7 +94,7 @@ impl WorldInfoCache {
 		let world_key = Self::key_for_world(world);
 		let m = WORLD_INFOS.lock().unwrap();
 		let cache = m.get(&world_key).unwrap();
-		cache.component_symbol_map.get(symbol).map(|v| *v)
+		cache.component_symbol_map.get(symbol).copied()
 	}
 
 	pub fn register_component_id_for_symbol(

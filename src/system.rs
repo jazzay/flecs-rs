@@ -118,7 +118,7 @@ impl<'w> SystemBuilder<'w> {
 
 		let mut entity_desc: ecs_entity_desc_t = unsafe { MaybeUninit::zeroed().assume_init() };
 
-		if self.name_temp.len() > 0 {
+		if !self.name_temp.is_empty() {
 			entity_desc.name = name_c_str.as_ptr() as *const i8;
 		} else {
 			// We must pass Null to flecs instead of "" otherwise bad stuff happens!
@@ -132,7 +132,7 @@ impl<'w> SystemBuilder<'w> {
 		self.desc.entity = unsafe { ecs_entity_init(world, &entity_desc) };
 
 		let expr_c_str = std::ffi::CString::new(self.expr_temp.as_str()).unwrap();
-		if self.expr_temp.len() > 0 {
+		if !self.expr_temp.is_empty() {
 			self.desc.query.filter.expr = expr_c_str.as_ptr() as *const i8;
 		} else {
 			// we should infer some filter state from the <(A, B)> generic signature
@@ -190,7 +190,7 @@ impl<'w> SystemBuilder<'w> {
 			for i in 0..it.count {
 				let eid = it.entities.offset(i as isize).as_ref().unwrap();
 				let e = Entity::new(it.world, *eid);
-				let rt = G::iter_as_ref_tuple(&it, i as isize);
+				let rt = G::iter_as_ref_tuple(it, i as isize);
 				cb(e, rt);
 			}
 		};
@@ -212,7 +212,7 @@ impl<'w> SystemBuilder<'w> {
 			for i in 0..it.count {
 				let eid = it.entities.offset(i as isize).as_ref().unwrap();
 				let e = Entity::new(it.world, *eid);
-				let rt = G::iter_as_mut_tuple(&it, i as isize);
+				let rt = G::iter_as_mut_tuple(it, i as isize);
 				cb(e, rt);
 			}
 		};
@@ -356,7 +356,7 @@ impl Iter {
 
 		let array = unsafe { ecs_field_w_size(self.it, size, index) as *mut u8 };
 
-		ColumnDynamic::new(array, count, size as usize, is_shared)
+		ColumnDynamic::new(array, count, size, is_shared)
 	}
 }
 
@@ -405,16 +405,16 @@ impl<T: Component> Column<T> {
 		assert!(index < self.count);
 		assert!(index == 0 || !self.is_shared);
 		unsafe {
-			let value = self.array.offset(index as isize);
+			let value = self.array.add(index);
 			value.as_ref().unwrap()
 		}
 	}
 
-	pub fn get_mut(&self, index: usize) -> &mut T {
+	pub fn get_mut(&mut self, index: usize) -> &mut T {
 		assert!(index < self.count);
 		assert!(index == 0 || !self.is_shared);
 		unsafe {
-			let value = self.array.offset(index as isize);
+			let value = self.array.add(index);
 			value.as_mut().unwrap()
 		}
 	}
@@ -441,7 +441,7 @@ impl ColumnDynamic {
 		assert!(index == 0 || !self.is_shared);
 		unsafe {
 			let element_offset = index * self.element_size;
-			let ptr = self.array.offset(element_offset as isize);
+			let ptr = self.array.add(element_offset);
 			let len = self.element_size;
 			std::slice::from_raw_parts_mut(ptr, len)
 		}
@@ -452,7 +452,7 @@ impl ColumnDynamic {
 		assert!(index == 0 || !self.is_shared);
 		unsafe {
 			let element_offset = index * self.element_size;
-			let ptr = self.array.offset(element_offset as isize);
+			let ptr = self.array.add(element_offset);
 			let len = self.element_size;
 			std::slice::from_raw_parts_mut(ptr, len)
 		}

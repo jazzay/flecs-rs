@@ -3,10 +3,8 @@ use flecs_sys::*;
 
 use once_cell::sync::Lazy;
 
-pub(crate) static NAME_SEP: Lazy<std::ffi::CString> = Lazy::new(|| {
-	let sep = std::ffi::CString::new("::").unwrap();
-	sep
-});
+pub(crate) static NAME_SEP: Lazy<std::ffi::CString> =
+	Lazy::new(|| std::ffi::CString::new("::").unwrap());
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Impl some flecs Macro like functions that do not bindgen

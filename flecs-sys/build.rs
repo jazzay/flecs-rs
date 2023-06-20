@@ -12,7 +12,7 @@ fn main() {
 	// Grab this value because #[cfg(all(target_arch = "wasm32", target_os = "emscripten"))] does not work in build.rs
 	// because it assumes that the target is the default OS target
 	// when you specify wasm32-unknown-emscripten.
-	let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap().to_string();
+	let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
 
 	let mut bindings = bindgen::Builder::default()
 		.header("flecs.h")
@@ -32,7 +32,7 @@ fn main() {
 		// To support all platforms we should use the emsdk sysroot itself for the include path.
 		let emsdk = env::var("EMSDK").unwrap();
 		let emsdk_include_path = format!("{}/upstream/emscripten/cache/sysroot/include", emsdk);
-		let include_path = env::var("STDLIB").unwrap_or(emsdk_include_path.to_string()).to_string();
+		let include_path = env::var("STDLIB").unwrap_or(emsdk_include_path);
 		let include_flag = String::from("-I") + &include_path[..include_path.len()];
 		println!("Used Include Path: {}", include_path);
 

@@ -58,13 +58,11 @@ impl<'c, T: Component + SealedComponentGroup> ComponentGroup<'c> for T {
 	}
 
 	unsafe fn iter_as_ref_tuple(it: &ecs_iter_t, i: isize) -> Self::RefTuple {
-		let v = ecs_field::<T>(it, 1).offset(i as isize).as_ref().unwrap();
-		&*(v)
+		ecs_field::<T>(it, 1).offset(i).as_ref().unwrap()
 	}
 
 	unsafe fn iter_as_mut_tuple(it: &ecs_iter_t, i: isize) -> Self::MutRefTuple {
-		let v = ecs_field::<T>(it, 1).offset(i as isize).as_mut().unwrap();
-		&mut *(v)
+		ecs_field::<T>(it, 1).offset(i).as_mut().unwrap()
 	}
 }
 
