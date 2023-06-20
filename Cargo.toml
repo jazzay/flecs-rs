@@ -8,7 +8,7 @@ repository = "https://github.com/jazzay/flecs-rs"
 license = "MIT"
 keywords = ["ecs", "game", "flecs"]
 categories = ["game-engines", "data-structures"]
-rust = "1.68"
+rust-version = "1.68"
 
 [profile.release]
 # debug = true		# Don't accidently submit this!
@@ -32,58 +32,58 @@ flax = "0.4.0"
 criterion = "0.5"
 
 [[example]]
-name="entity_basics"
+name = "entity_basics"
 path = "examples/entity/basics.rs"
 test = true
 
 [[example]]
-name="entity_hierarchy"
+name = "entity_hierarchy"
 path = "examples/entity/hierarchy.rs"
 test = true
 
 [[example]]
-name="entity_iterate_components"
+name = "entity_iterate_components"
 path = "examples/entity/iterate_components.rs"
 test = true
 
 [[example]]
-name="prefabs"
+name = "prefabs"
 path = "examples/entity/prefabs.rs"
 test = true
 
 [[example]]
-name="relations"
+name = "relations"
 path = "examples/entity/relations.rs"
 test = true
 
 [[example]]
-name="dynamic_components"
+name = "dynamic_components"
 test = true
 
 [[example]]
-name="hello_world"
+name = "hello_world"
 test = true
 
 [[example]]
-name="filters"
+name = "filters"
 test = true
 
 [[example]]
-name="queries_basics"
+name = "queries_basics"
 path = "examples/queries/basics.rs"
 test = true
 
 [[example]]
-name="systems"
+name = "systems"
 test = true
 
 [[example]]
-name="systems_basics"
+name = "systems_basics"
 path = "examples/systems/basics.rs"
 test = true
 
 [[example]]
-name="systems_delta_time"
+name = "systems_delta_time"
 path = "examples/systems/delta_time.rs"
 test = true
 

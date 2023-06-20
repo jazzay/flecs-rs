@@ -1,7 +1,7 @@
-use std::{ffi::c_void};
+use std::ffi::c_void;
 
-use crate::*;
 use crate::cache::WorldInfoCache;
+use crate::*;
 
 pub struct System {
 	world: *mut ecs_world_t,
@@ -10,38 +10,30 @@ pub struct System {
 
 impl System {
 	pub(crate) fn new(world: *mut ecs_world_t, id: ecs_entity_t) -> Self {
-		System {
-			world,
-			id
-		}
+		System { world, id }
 	}
 
 	pub fn entity(&self) -> Entity {
 		Entity::new(self.world, self.id)
 	}
 
-    pub fn interval(&self, interval: f32) {
-        unsafe { ecs_set_interval(self.world, self.id, interval) };
-    }
+	pub fn interval(&self, interval: f32) {
+		unsafe { ecs_set_interval(self.world, self.id, interval) };
+	}
 
-    pub fn enable(&self) {
-        unsafe { ecs_enable(self.world, self.id, true) };
-    }
+	pub fn enable(&self) {
+		unsafe { ecs_enable(self.world, self.id, true) };
+	}
 
-    pub fn disable(&self) {
-        unsafe { ecs_enable(self.world, self.id, false) };
-    }
+	pub fn disable(&self) {
+		unsafe { ecs_enable(self.world, self.id, false) };
+	}
 
 	pub fn run(&self, delta_time: f32) {
 		let param: *mut ::std::os::raw::c_void = std::ptr::null_mut();
 
 		unsafe {
-			let _last_entity = ecs_run(
-				self.world,
-				self.id,
-				delta_time,
-				param,
-			);
+			let _last_entity = ecs_run(self.world, self.id, delta_time, param);
 		}
 	}
 }
@@ -51,28 +43,28 @@ pub struct SystemBuilder<'w> {
 	desc: ecs_system_desc_t,
 
 	// we need to keep these in memory until after build
-	name_temp: String,	
-	expr_temp: String,	
+	name_temp: String,
+	expr_temp: String,
 
 	next_term_index: usize,
 }
 
 impl<'w> TermBuilder for SystemBuilder<'w> {
-    fn world(&mut self) -> *mut ecs_world_t {
-        self.world.raw()
-    }
-
-	fn filter_desc(&mut self) -> &mut ecs_filter_desc_t {
-        &mut self.desc.query.filter
+	fn world(&mut self) -> *mut ecs_world_t {
+		self.world.raw()
 	}
 
-    fn current_term(&mut self) -> &mut ecs_term_t {
-        &mut self.desc.query.filter.terms[self.next_term_index]
-    }
+	fn filter_desc(&mut self) -> &mut ecs_filter_desc_t {
+		&mut self.desc.query.filter
+	}
 
-    fn next_term(&mut self) {
-        self.next_term_index += 1;
-    }
+	fn current_term(&mut self) -> &mut ecs_term_t {
+		&mut self.desc.query.filter.terms[self.next_term_index]
+	}
+
+	fn next_term(&mut self) {
+		self.next_term_index += 1;
+	}
 }
 
 impl<'w> SystemBuilder<'w> {
@@ -89,20 +81,20 @@ impl<'w> SystemBuilder<'w> {
 		}
 	}
 
-    pub fn named(mut self, name: &str) -> Self {
-        self.name_temp = name.to_owned();
+	pub fn named(mut self, name: &str) -> Self {
+		self.name_temp = name.to_owned();
 		self
-    }
+	}
 
-    pub fn expr(mut self, expr: &str) -> Self {
-        self.expr_temp = expr.to_owned();
-        self
-    }
-
-    pub fn interval(mut self, interval: f32) -> Self {
-        self.desc.interval = interval;
+	pub fn expr(mut self, expr: &str) -> Self {
+		self.expr_temp = expr.to_owned();
 		self
-    }
+	}
+
+	pub fn interval(mut self, interval: f32) -> Self {
+		self.desc.interval = interval;
+		self
+	}
 
 	/** Associate system with entity */
 	// TODO - Don't create an entity then in this case (v3.0 change)
@@ -110,12 +102,12 @@ impl<'w> SystemBuilder<'w> {
 	// 	self.desc.entity = entity.raw();
 	// 	self
 	// }
-	
-    /** Set system context */
-    pub(crate) fn ctx(mut self, ctx: *mut ::std::os::raw::c_void) -> Self {
-        self.desc.ctx = ctx;
-        self
-    }	
+
+	/** Set system context */
+	pub(crate) fn ctx(mut self, ctx: *mut ::std::os::raw::c_void) -> Self {
+		self.desc.ctx = ctx;
+		self
+	}
 
 	// Build APIs, the 2 variants call the internal build()
 	fn build(&mut self) -> ecs_entity_t {
@@ -148,56 +140,58 @@ impl<'w> SystemBuilder<'w> {
 
 		// TODO: Copied from Flecs C++. Cleanup soon!!
 		//
-        // entity_t e, kind = m_desc.entity.add[0];
-        // bool is_trigger = kind == flecs::OnAdd || kind == flecs::OnRemove;
+		// entity_t e, kind = m_desc.entity.add[0];
+		// bool is_trigger = kind == flecs::OnAdd || kind == flecs::OnRemove;
 
-        /*if (is_trigger) {
-            ecs_trigger_desc_t desc = {};
-            ecs_term_t term = m_desc.query.filter.terms[0];
-            if (ecs_term_is_initialized(&term)) {
-                desc.term = term;
-            } else {
-                desc.expr = m_desc.query.filter.expr;
-            }
+		/*if (is_trigger) {
+			ecs_trigger_desc_t desc = {};
+			ecs_term_t term = m_desc.query.filter.terms[0];
+			if (ecs_term_is_initialized(&term)) {
+				desc.term = term;
+			} else {
+				desc.expr = m_desc.query.filter.expr;
+			}
 
-            desc.entity.entity = m_desc.entity.entity;
-            desc.events[0] = kind;
-            desc.callback = Invoker::run;
-            desc.self = m_desc.self;
-            desc.ctx = m_desc.ctx;
-            desc.binding_ctx = ctx;
-            desc.binding_ctx_free = reinterpret_cast<
-                ecs_ctx_free_t>(_::free_obj<Invoker>);
+			desc.entity.entity = m_desc.entity.entity;
+			desc.events[0] = kind;
+			desc.callback = Invoker::run;
+			desc.self = m_desc.self;
+			desc.ctx = m_desc.ctx;
+			desc.binding_ctx = ctx;
+			desc.binding_ctx_free = reinterpret_cast<
+				ecs_ctx_free_t>(_::free_obj<Invoker>);
 
-            e = ecs_trigger_init(m_world, &desc);
-        } else*/ {
-            //let desc = self.desc;
-            // desc.callback = Some(Invoker::invoke);
-            // desc.self = m_desc.self;
-            // desc.query.filter.substitute_default = is_each;
-            // desc.binding_ctx = ctx;
-            // desc.binding_ctx_free = reinterpret_cast<ecs_ctx_free_t>(_::free_obj<Invoker>);
+			e = ecs_trigger_init(m_world, &desc);
+		} else*/
+		{
+			//let desc = self.desc;
+			// desc.callback = Some(Invoker::invoke);
+			// desc.self = m_desc.self;
+			// desc.query.filter.substitute_default = is_each;
+			// desc.binding_ctx = ctx;
+			// desc.binding_ctx_free = reinterpret_cast<ecs_ctx_free_t>(_::free_obj<Invoker>);
 
 			e = unsafe { ecs_system_init(world, &self.desc) };
-        }
+		}
 
-        // if (this->m_desc.query.filter.terms_buffer) {
-        //     ecs_os_free(m_desc.query.filter.terms_buffer);
-        // }
+		// if (this->m_desc.query.filter.terms_buffer) {
+		//     ecs_os_free(m_desc.query.filter.terms_buffer);
+		// }
 
-        e
+		e
 	}
 
-	pub fn each<G: ComponentGroup<'w>>(mut self, mut cb: impl FnMut(Entity, G::RefTuple)) -> System {
-		let mut closure = |it: *mut ecs_iter_t| {
-			unsafe {
-				let it = &(*it);
-				for i in 0..it.count {
-					let eid = it.entities.offset(i as isize).as_ref().unwrap();
-					let e = Entity::new(it.world, *eid);
-					let rt = G::iter_as_ref_tuple(&it, i as isize);
-					cb(e, rt);
-				}
+	pub fn each<G: ComponentGroup<'w>>(
+		mut self,
+		mut cb: impl FnMut(Entity, G::RefTuple),
+	) -> System {
+		let mut closure = |it: *mut ecs_iter_t| unsafe {
+			let it = &(*it);
+			for i in 0..it.count {
+				let eid = it.entities.offset(i as isize).as_ref().unwrap();
+				let e = Entity::new(it.world, *eid);
+				let rt = G::iter_as_ref_tuple(&it, i as isize);
+				cb(e, rt);
 			}
 		};
 		let trampoline = get_trampoline(&closure);
@@ -206,19 +200,20 @@ impl<'w> SystemBuilder<'w> {
 		self.desc.binding_ctx = &mut closure as *mut _ as *mut c_void;
 
 		let e = Self::build(&mut self);
-		System::new(self.world.raw(), e)		
+		System::new(self.world.raw(), e)
 	}
 
-	pub fn each_mut<G: ComponentGroup<'w>>(mut self, mut cb: impl FnMut(Entity, G::MutRefTuple)) -> System {
-		let mut closure = |it: *mut ecs_iter_t| {
-			unsafe {
-				let it = &(*it);
-				for i in 0..it.count {
-					let eid = it.entities.offset(i as isize).as_ref().unwrap();
-					let e = Entity::new(it.world, *eid);
-					let rt = G::iter_as_mut_tuple(&it, i as isize);
-					cb(e, rt);
-				}
+	pub fn each_mut<G: ComponentGroup<'w>>(
+		mut self,
+		mut cb: impl FnMut(Entity, G::MutRefTuple),
+	) -> System {
+		let mut closure = |it: *mut ecs_iter_t| unsafe {
+			let it = &(*it);
+			for i in 0..it.count {
+				let eid = it.entities.offset(i as isize).as_ref().unwrap();
+				let e = Entity::new(it.world, *eid);
+				let rt = G::iter_as_mut_tuple(&it, i as isize);
+				cb(e, rt);
 			}
 		};
 		let trampoline = get_trampoline(&closure);
@@ -227,7 +222,7 @@ impl<'w> SystemBuilder<'w> {
 		self.desc.binding_ctx = &mut closure as *mut _ as *mut c_void;
 
 		let e = Self::build(&mut self);
-		System::new(self.world.raw(), e)		
+		System::new(self.world.raw(), e)
 	}
 
 	pub fn iter<F: FnMut(&Iter)>(mut self, mut func: F) -> System {
@@ -257,12 +252,8 @@ pub struct Iter {
 }
 
 impl Iter {
-	pub (crate) fn new(it: *mut ecs_iter_t) -> Self {
-		Iter {
-			it,
-			begin: 0,
-			end: unsafe { (*it).count as usize }
-		}
+	pub(crate) fn new(it: *mut ecs_iter_t) -> Self {
+		Iter { it, begin: 0, end: unsafe { (*it).count as usize } }
 	}
 
 	pub fn world(&self) -> World {
@@ -289,90 +280,91 @@ impl Iter {
 		unsafe { (*self.it).delta_system_time }
 	}
 
-    pub fn entity(&self, index: i32) -> Entity {
+	pub fn entity(&self, index: i32) -> Entity {
 		let entity = unsafe {
 			let id = (*self.it).entities.offset(index as isize);
 			id.as_ref().unwrap()
 		};
 
 		Entity::new(unsafe { (*self.it).world }, *entity)
-    }
+	}
 
 	pub fn field_count(&self) -> i32 {
 		unsafe { (*self.it).field_count }
 	}
 
-    pub fn field<A: Component>(&self, index: i32) -> Column<A> {
-        Self::get_field::<A>(self, index)
-    }
+	pub fn field<A: Component>(&self, index: i32) -> Column<A> {
+		Self::get_field::<A>(self, index)
+	}
 
-    fn get_field<T: Component>(&self, index: i32) -> Column<T> {
-			// validate that types match. could avoid this in Release builds perhaps to get max perf
-			let field_id = unsafe { ecs_field_id(self.it, index) };
-			let world = unsafe { (*self.it).real_world };	// must use real to get component infos
-			let comp_id = WorldInfoCache::get_component_id_for_type::<T>(world).expect("Component type not registered!");
-			// println!("Term: {}, Comp: {}", term_id, comp_id);
-			assert!(field_id == comp_id);
+	fn get_field<T: Component>(&self, index: i32) -> Column<T> {
+		// validate that types match. could avoid this in Release builds perhaps to get max perf
+		let field_id = unsafe { ecs_field_id(self.it, index) };
+		let world = unsafe { (*self.it).real_world }; // must use real to get component infos
+		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(world)
+			.expect("Component type not registered!");
+		// println!("Term: {}, Comp: {}", term_id, comp_id);
+		assert!(field_id == comp_id);
 
-			/* TODO - validate that the types actually match!!!!
-	#ifndef NDEBUG
-					ecs_assert(term_id & ECS_PAIR || term_id & ECS_SWITCH || 
-							term_id & ECS_CASE ||
-							term_id == _::cpp_type<T>::id(m_iter->world), 
-							ECS_COLUMN_TYPE_MISMATCH, NULL);
-	#endif
-			*/
+		/* TODO - validate that the types actually match!!!!
+		#ifndef NDEBUG
+						ecs_assert(term_id & ECS_PAIR || term_id & ECS_SWITCH ||
+								term_id & ECS_CASE ||
+								term_id == _::cpp_type<T>::id(m_iter->world),
+								ECS_COLUMN_TYPE_MISMATCH, NULL);
+		#endif
+				*/
 
-			let mut count = self.count();
+		let mut count = self.count();
 
-			let is_shared = unsafe { !ecs_field_is_self(self.it, index) };
+		let is_shared = unsafe { !ecs_field_is_self(self.it, index) };
 
-			/* If a shared column is retrieved with 'column', there will only be a
-				* single value. Ensure that the application does not accidentally read
-				* out of bounds. */
-			if is_shared {
-					count = 1;
-			}
-			// println!("Term: {}, is_shared: {}, count: {}", term_id, is_shared, count);
+		/* If a shared column is retrieved with 'column', there will only be a
+			* single value. Ensure that the application does not accidentally read
+			* out of bounds. */
+		if is_shared {
+			count = 1;
+		}
+		// println!("Term: {}, is_shared: {}, count: {}", term_id, is_shared, count);
 
-			let size = std::mem::size_of::<T>();
-			let array = unsafe { ecs_field_w_size(self.it, size, index) as *mut T };
+		let size = std::mem::size_of::<T>();
+		let array = unsafe { ecs_field_w_size(self.it, size, index) as *mut T };
 
-			Column::new(array, count, is_shared)
-    }
+		Column::new(array, count, is_shared)
+	}
 
-    pub fn field_dynamic(&self, index: i32) -> ColumnDynamic {
-			// fields are 1 based
-			assert!(index > 0);
-			assert!(index <= self.field_count());
+	pub fn field_dynamic(&self, index: i32) -> ColumnDynamic {
+		// fields are 1 based
+		assert!(index > 0);
+		assert!(index <= self.field_count());
 
-			let mut count = self.count();
+		let mut count = self.count();
 
-			let is_shared = unsafe { !ecs_field_is_self(self.it, index) };
-			if is_shared {
-				count = 1;
-			}
+		let is_shared = unsafe { !ecs_field_is_self(self.it, index) };
+		if is_shared {
+			count = 1;
+		}
 
-			// TODO: look this up within the component info
-			let world = unsafe { (*self.it).real_world };
-			let term_id = unsafe { ecs_field_id(self.it, index) };
+		// TODO: look this up within the component info
+		let world = unsafe { (*self.it).real_world };
+		let term_id = unsafe { ecs_field_id(self.it, index) };
 
-			let mut size = 0;	// we only get a size if there is a component?
-			if let Some(info) = get_component_info(world, term_id) {
-				size = info.size as usize;
-			}
+		let mut size = 0; // we only get a size if there is a component?
+		if let Some(info) = get_component_info(world, term_id) {
+			size = info.size as usize;
+		}
 
-			let array = unsafe { ecs_field_w_size(self.it, size, index) as *mut u8 };
+		let array = unsafe { ecs_field_w_size(self.it, size, index) as *mut u8 };
 
-			ColumnDynamic::new(array, count, size as usize, is_shared)
-    }	
+		ColumnDynamic::new(array, count, size as usize, is_shared)
+	}
 }
 
 pub type SystemCallback = unsafe extern "C" fn(*mut ecs_iter_t);
 
 unsafe extern "C" fn trampoline<F>(it: *mut ecs_iter_t)
 where
-    F: FnMut(*mut ecs_iter_t),
+	F: FnMut(*mut ecs_iter_t),
 {
 	if it.is_null() {
 		return;
@@ -383,35 +375,30 @@ where
 		return;
 	}
 
-    let func = &mut *(func_ptr as *mut F);
-    func(it);
+	let func = &mut *(func_ptr as *mut F);
+	func(it);
 }
 
 // we have to wrap system callback functions in a trampoline
 // so that we can access it again within the C callback handler
 fn get_trampoline<F>(_closure: &F) -> SystemCallback
 where
-    F: FnMut(*mut ecs_iter_t),
+	F: FnMut(*mut ecs_iter_t),
 {
-    trampoline::<F>
+	trampoline::<F>
 }
-
 
 // TODO: Move to another file
 
 pub struct Column<T: Component> {
-    array: *mut T, 
-    count: usize,
-    is_shared: bool,
+	array: *mut T,
+	count: usize,
+	is_shared: bool,
 }
 
 impl<T: Component> Column<T> {
 	pub(crate) fn new(array: *mut T, count: usize, is_shared: bool) -> Self {
-		Column {
-			array,
-			count,
-			is_shared,
-		}
+		Column { array, count, is_shared }
 	}
 
 	pub fn get(&self, index: usize) -> &T {
@@ -434,23 +421,20 @@ impl<T: Component> Column<T> {
 }
 
 pub struct ColumnDynamic {
-    array: *mut u8, 
-    count: usize,
-    element_size: usize,
-    is_shared: bool,
+	array: *mut u8,
+	count: usize,
+	element_size: usize,
+	is_shared: bool,
 }
 
 impl ColumnDynamic {
 	pub(crate) fn new(array: *mut u8, count: usize, element_size: usize, is_shared: bool) -> Self {
-		ColumnDynamic {
-			array,
-			count,
-			element_size,
-			is_shared,
-		}
+		ColumnDynamic { array, count, element_size, is_shared }
 	}
 
-	pub fn element_size(&self) -> usize { self.element_size }
+	pub fn element_size(&self) -> usize {
+		self.element_size
+	}
 
 	pub fn get(&self, index: usize) -> &[u8] {
 		assert!(index < self.count);
@@ -474,4 +458,3 @@ impl ColumnDynamic {
 		}
 	}
 }
-

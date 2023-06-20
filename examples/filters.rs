@@ -20,7 +20,8 @@ struct Scale {
 
 fn create_some_entities(world: &mut World, count: usize) {
 	for i in 0..count {
-		world.entity()
+		world
+			.entity()
 			.named(&format!("E-{}", i))
 			.set(Position { x: 1.0, y: 2.0 })
 			.set(Velocity { x: 2.0, y: 4.0 })
@@ -29,7 +30,7 @@ fn create_some_entities(world: &mut World, count: usize) {
 }
 
 fn tick(world: &mut World) -> [f32; 2] {
-	let mut result = [ 0.0, 0.0 ];
+	let mut result = [0.0, 0.0];
 	let filter = Filter::new_1::<Position>(world.raw());
 	filter.each_1(|_e, pos: &Position| {
 		result[0] += pos.x;
@@ -86,8 +87,8 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn flecs_filters() {
+	#[test]
+	fn flecs_filters() {
 		super::main();
 	}
 }

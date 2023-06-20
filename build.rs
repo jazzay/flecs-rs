@@ -16,7 +16,7 @@ fn main() {
 
 	let mut bindings = bindgen::Builder::default()
 		.header("flecs.h")
-		.clang_arg("-fvisibility=default")	// Necessary for Emscripten target.
+		.clang_arg("-fvisibility=default") // Necessary for Emscripten target.
 		.generate_comments(false)
 		.layout_tests(false)
 		// Tell cargo to invalidate the built crate whenever any of the
@@ -38,10 +38,8 @@ fn main() {
 
 		bindings = bindings.clang_arg(include_flag);
 	}
-	
-	let bindings = bindings
-		.generate()
-		.expect("Unable to generate bindings");
+
+	let bindings = bindings.generate().expect("Unable to generate bindings");
 
 	// We generate bindings to an actual source file so that we get better IDE integration
 	// Sadly to publish on crates.io we cannot write outside the OUT_DIR revisit this later.
@@ -51,9 +49,7 @@ fn main() {
 	// 	.expect("Couldn't write bindings!");
 
 	let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
-	bindings
-		.write_to_file(out_path.join("bindings.rs"))
-		.expect("Couldn't write bindings!");
+	bindings.write_to_file(out_path.join("bindings.rs")).expect("Couldn't write bindings!");
 
 	// Compile flecs C right into our Rust crate
 	cc::Build::new()
@@ -63,6 +59,5 @@ fn main() {
 		// .flag("-flto")			// no impact on Arm. Perhaps useful to other archs.
 		// .flag("-fuse-ld=lld")	// not available on MacOS/Arm
 		.file("flecs.c")
-		.compile("flecs");	
-
+		.compile("flecs");
 }

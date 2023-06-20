@@ -1,10 +1,10 @@
-use crate::*;
 use crate::cache::WorldInfoCache;
+use crate::*;
 
 // This is a first attempt at sharing common term building functionality
 // between Filters, Queries, and Systems
 //
-pub trait TermBuilder : Sized {
+pub trait TermBuilder: Sized {
 	fn world(&mut self) -> *mut ecs_world_t;
 	fn filter_desc(&mut self) -> &mut ecs_filter_desc_t;
 	fn current_term(&mut self) -> &mut ecs_term_t;
@@ -16,7 +16,7 @@ pub trait TermBuilder : Sized {
 	// 	if expr.len() > 0 {
 	// 		let expr_c_str = std::ffi::CString::new(expr).unwrap();
 	// 		filter.expr = expr_c_str.as_ptr() as *const i8;
-	// 	}	
+	// 	}
 	// 	self
 	// }
 
@@ -55,5 +55,4 @@ pub trait TermBuilder : Sized {
 		G::populate(&mut self);
 		self
 	}
-
 }

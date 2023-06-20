@@ -1,5 +1,5 @@
-use std::alloc::Layout;
 use flecs::*;
+use std::alloc::Layout;
 
 #[derive(Default, Debug, PartialEq)]
 struct Position {
@@ -25,17 +25,15 @@ fn run_data_example(count: i32) {
 	let data_comp = world.component_dynamic(DATA, Layout::new::<DataValue>());
 
 	for i in 0..count {
-		world.entity()
+		world
+			.entity()
 			.set(Position::default())
 			.set(Velocity::default())
 			.set_dynamic(DATA, &[i as u8; 6]);
 	}
 
 	// Can create filters that mix dynamic and static component types
-	let filter = world.filter_builder()
-		.term::<Position>()
-		.term_dynamic(data_comp)
-		.build();
+	let filter = world.filter_builder().term::<Position>().term_dynamic(data_comp).build();
 
 	filter.iter(|it| {
 		let positions = it.field::<Position>(1);
@@ -50,7 +48,8 @@ fn run_data_example(count: i32) {
 	});
 
 	// Can create filters that mix dynamic and static component types
-	let filter = world.filter_builder()
+	let filter = world
+		.filter_builder()
 		.with_components::<(Position, Velocity)>()
 		.term_dynamic(data_comp)
 		.build();
@@ -70,7 +69,9 @@ fn run_data_example(count: i32) {
 	});
 
 	// Can create a system that can iterate static and dynamic components
-	world.system().named("DynamicSystem")
+	world
+		.system()
+		.named("DynamicSystem")
 		.with_components::<(Position, Velocity)>()
 		.term_dynamic(data_comp)
 		.iter(|it| {
@@ -83,9 +84,8 @@ fn run_data_example(count: i32) {
 				let data = datas.get(index);
 				println!("   {:?}, {:?}", pos, data);
 			}
-		
 		});
-		
+
 	world.progress(0.0333);
 }
 
@@ -96,8 +96,8 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn flecs_dynamic_components() {
+	#[test]
+	fn flecs_dynamic_components() {
 		super::main();
 	}
 }
