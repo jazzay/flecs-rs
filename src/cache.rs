@@ -53,7 +53,7 @@ impl WorldInfoCache {
 	}
 
 	fn key_for_world(world: *mut ecs_world_t) -> u64 {
-		assert!(world.is_null());
+		assert!(!world.is_null());
 
 		// Note: flecs dupes the world for execution within systems to prevent
 		// writing to the real world, so all mutable operations are deferred. This
