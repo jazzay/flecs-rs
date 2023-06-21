@@ -1,7 +1,7 @@
 use once_cell::sync::Lazy;
 
-use crate::bindings::*;
 use crate::Component;
+use flecs_sys::*;
 use std::{any::TypeId, collections::HashMap, sync::Mutex};
 
 // TODO: Revisit how we cache the runtime Component IDs per type
@@ -23,11 +23,11 @@ use std::{any::TypeId, collections::HashMap, sync::Mutex};
 // assume that same ID again...
 
 static WORLD_INFOS: Lazy<Mutex<HashMap<WorldKey, WorldInfoCache>>> = Lazy::new(|| {
-    let m = HashMap::new();
-    Mutex::new(m)
+	let m = HashMap::new();
+	Mutex::new(m)
 });
 
-type WorldKey = u64;	//*mut ecs_world_t;
+type WorldKey = u64; //*mut ecs_world_t;
 
 #[derive(Copy, Clone, Debug)]
 pub(crate) struct ComponentInfo {
@@ -35,8 +35,7 @@ pub(crate) struct ComponentInfo {
 	pub(crate) size: usize,
 }
 
-pub(crate) struct WorldInfoCache
-{
+pub(crate) struct WorldInfoCache {
 	component_typeid_map: HashMap<TypeId, u64>,
 	component_symbol_map: HashMap<&'static str, ComponentInfo>,
 }
@@ -64,35 +63,49 @@ impl WorldInfoCache {
 		actual_world as u64
 	}
 
-	pub fn get_component_id_for_type<T: Component>(world: *mut ecs_world_t) -> Option<ecs_entity_t> {
+	pub fn get_component_id_for_type<T: Component>(
+		world: *mut ecs_world_t,
+	) -> Option<ecs_entity_t> {
 		let world_key = Self::key_for_world(world);
 		let m = WORLD_INFOS.lock().unwrap();
-		let cache = m.get(&world_key).unwrap();	//.clone();	
+		let cache = m.get(&world_key).unwrap(); //.clone();
 
 		let type_id = TypeId::of::<T>();
-		let comp_id = cache.component_typeid_map.get(&type_id).map(|v| *v);	
+		let comp_id = cache.component_typeid_map.get(&type_id).map(|v| *v);
 		comp_id
 	}
 
-	pub fn register_component_id_for_type_id(world: *mut ecs_world_t, comp_id: ecs_entity_t, type_id: TypeId) {
+	pub fn register_component_id_for_type_id(
+		world: *mut ecs_world_t,
+		comp_id: ecs_entity_t,
+		type_id: TypeId,
+	) {
 		let world_key = Self::key_for_world(world);
 		let mut m = WORLD_INFOS.lock().unwrap();
-		let cache = m.get_mut(&world_key).unwrap();	//.clone();	
+		let cache = m.get_mut(&world_key).unwrap(); //.clone();
 
 		cache.component_typeid_map.insert(type_id, comp_id);
 	}
 
-	pub fn get_component_id_for_symbol(world: *mut ecs_world_t, symbol: &'static str) -> Option<ComponentInfo> {
+	pub fn get_component_id_for_symbol(
+		world: *mut ecs_world_t,
+		symbol: &'static str,
+	) -> Option<ComponentInfo> {
 		let world_key = Self::key_for_world(world);
 		let m = WORLD_INFOS.lock().unwrap();
 		let cache = m.get(&world_key).unwrap();
 		cache.component_symbol_map.get(symbol).map(|v| *v)
 	}
 
-	pub fn register_component_id_for_symbol(world: *mut ecs_world_t, comp_id: ecs_entity_t, symbol: &'static str, size: usize) {
+	pub fn register_component_id_for_symbol(
+		world: *mut ecs_world_t,
+		comp_id: ecs_entity_t,
+		symbol: &'static str,
+		size: usize,
+	) {
 		let world_key = Self::key_for_world(world);
 		let mut m = WORLD_INFOS.lock().unwrap();
 		let cache = m.get_mut(&world_key).unwrap();
 		cache.component_symbol_map.insert(symbol, ComponentInfo { id: comp_id, size });
-	}	
-}	
+	}
+}

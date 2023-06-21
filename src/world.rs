@@ -1,7 +1,7 @@
 use std::alloc::Layout;
 
-use crate::*;
 use crate::cache::WorldInfoCache;
+use crate::*;
 
 pub struct World {
 	world: *mut ecs_world_t,
@@ -13,28 +13,22 @@ impl World {
 	pub fn new() -> Self {
 		let world = unsafe { ecs_init() };
 		WorldInfoCache::insert(world);
-		let mut w = Self {
-			world,
-			owned: true
-		};
+		let mut w = Self { world, owned: true };
 		w.init_builtin_components();
 		w
 	}
 
 	pub(crate) fn new_from(world: *mut ecs_world_t) -> Self {
-		Self {
-			world,
-			owned: false
-		}
+		Self { world, owned: false }
 	}
 
 	fn init_builtin_components(&mut self) {
-		// TODO: Get access to these components, and determine if component_named 
+		// TODO: Get access to these components, and determine if component_named
 		// is sufficient or if these need to be paths?
 		// self.component_named::<Component>("flecs::core::Component");
 		// self.component_named::<Identifier>("flecs::core::Identifier");
 		// self.component_named::<Poly>("flecs::core::Poly");
-	
+
 		// TODO - register all the module components as well
 		// #   ifdef FLECS_SYSTEM
 		// 	_::system_init(*this);
@@ -58,15 +52,15 @@ impl World {
 	}
 
 	/// Deletes and recreates the world
-    pub fn reset(&mut self) {
+	pub fn reset(&mut self) {
 		assert!(self.owned);
-        unsafe { 
+		unsafe {
 			ecs_fini(self.world);
 			self.world = ecs_init();
 			WorldInfoCache::insert(self.world);
 		}
 		self.init_builtin_components();
-    }
+	}
 
 	pub fn entity(&self) -> Entity {
 		let entity = unsafe { ecs_new_id(self.world) };
@@ -74,21 +68,19 @@ impl World {
 	}
 
 	pub fn prefab(&self, name: &str) -> Entity {
-		unsafe { 
+		unsafe {
 			let entity = ecs_new_id(self.world);
-			Entity::new(self.world, entity)
-				.named(name)
-				.add_id(EcsPrefab)
+			Entity::new(self.world, entity).named(name).add_id(EcsPrefab)
 		}
 	}
 
-    pub fn progress(&self, delta_time: f32) -> bool {
-        unsafe { ecs_progress(self.world, delta_time) }
-    }	
+	pub fn progress(&self, delta_time: f32) -> bool {
+		unsafe { ecs_progress(self.world, delta_time) }
+	}
 
 	/// Get current frame delta time
 	pub fn delta_time(&self) -> f32 {
-		unsafe { 
+		unsafe {
 			let stats = ecs_get_world_info(self.world).as_ref().unwrap();
 			stats.delta_time
 		}
@@ -96,7 +88,7 @@ impl World {
 
 	/// Get current tick (in frames)
 	pub fn tick(&self) -> i64 {
-		unsafe { 
+		unsafe {
 			let stats = ecs_get_world_info(self.world).as_ref().unwrap();
 			stats.frame_count_total
 		}
@@ -104,124 +96,128 @@ impl World {
 
 	/// Get current simulation time
 	pub fn time(&self) -> f32 {
-		unsafe { 
+		unsafe {
 			let stats = ecs_get_world_info(self.world).as_ref().unwrap();
 			stats.world_time_total
 		}
 	}
 
 	/** Signal application should quit.
-     * After calling this operation, the next call to progress() returns false.
-     */
-    pub fn quit(&self) {
-        unsafe { ecs_quit(self.world) }
-    }
+	 * After calling this operation, the next call to progress() returns false.
+	 */
+	pub fn quit(&self) {
+		unsafe { ecs_quit(self.world) }
+	}
 
-    /** Test if quit() has been called.
-     */
-    fn should_quit(&self) -> bool {
-        unsafe { ecs_should_quit(self.world) }
-    }
+	/** Test if quit() has been called.
+	 */
+	fn should_quit(&self) -> bool {
+		unsafe { ecs_should_quit(self.world) }
+	}
 
-    /** Begin frame.
-     * When an application does not use progress() to control the main loop, it
-     * can still use Flecs features such as FPS limiting and time measurements.
-     * This operation needs to be invoked whenever a new frame is about to get 
-     * processed.
-     *
-     * Calls to frame_begin must always be followed by frame_end.
-     *
-     * The function accepts a delta_time parameter, which will get passed to 
-     * systems. This value is also used to compute the amount of time the 
-     * function needs to sleep to ensure it does not exceed the target_fps, when 
-     * it is set. When 0 is provided for delta_time, the time will be measured.
-     *
-     * This function should only be ran from the main thread.
-     *
-     * @param delta_time Time elapsed since the last frame.
-     * @return The provided delta_time, or measured time if 0 was provided.
-     */
-    fn frame_begin(&self, delta_time: f32) -> f32 {
-        unsafe { ecs_frame_begin(self.world, delta_time) }
-    }
+	/** Begin frame.
+	 * When an application does not use progress() to control the main loop, it
+	 * can still use Flecs features such as FPS limiting and time measurements.
+	 * This operation needs to be invoked whenever a new frame is about to get
+	 * processed.
+	 *
+	 * Calls to frame_begin must always be followed by frame_end.
+	 *
+	 * The function accepts a delta_time parameter, which will get passed to
+	 * systems. This value is also used to compute the amount of time the
+	 * function needs to sleep to ensure it does not exceed the target_fps, when
+	 * it is set. When 0 is provided for delta_time, the time will be measured.
+	 *
+	 * This function should only be ran from the main thread.
+	 *
+	 * @param delta_time Time elapsed since the last frame.
+	 * @return The provided delta_time, or measured time if 0 was provided.
+	 */
+	fn frame_begin(&self, delta_time: f32) -> f32 {
+		unsafe { ecs_frame_begin(self.world, delta_time) }
+	}
 
-    /** End frame. 
-     * This operation must be called at the end of the frame, and always after
-     * ecs_frame_begin.
-     *
-     * This function should only be ran from the main thread.
-     */
-    fn frame_end(&self) {
-        unsafe { ecs_frame_end(self.world); }
-    }
+	/** End frame.
+	 * This operation must be called at the end of the frame, and always after
+	 * ecs_frame_begin.
+	 *
+	 * This function should only be ran from the main thread.
+	 */
+	fn frame_end(&self) {
+		unsafe {
+			ecs_frame_end(self.world);
+		}
+	}
 
-    /** Begin staging.
-     * When an application does not use ecs_progress to control the main loop, it
-     * can still use Flecs features such as the defer queue. When an application
-     * needs to stage changes, it needs to call this function after ecs_frame_begin.
-     * A call to ecs_readonly_begin must be followed by a call to ecs_readonly_end.
-     * 
-     * When staging is enabled, modifications to entities are stored to a stage.
-     * This ensures that arrays are not modified while iterating. Modifications are
-     * merged back to the "main stage" when ecs_readonly_end is invoked.
-     *
-     * While the world is in staging mode, no structural changes (add/remove/...)
-     * can be made to the world itself. Operations must be executed on a stage
-     * instead (see ecs_get_stage).
-     *
-     * This function should only be ran from the main thread.
-     *
-     * @return Whether world is currently staged.
-     */
-    fn readonly_begin(&self) -> bool {
-        unsafe { ecs_readonly_begin(self.world) }
-    }
+	/** Begin staging.
+	 * When an application does not use ecs_progress to control the main loop, it
+	 * can still use Flecs features such as the defer queue. When an application
+	 * needs to stage changes, it needs to call this function after ecs_frame_begin.
+	 * A call to ecs_readonly_begin must be followed by a call to ecs_readonly_end.
+	 *
+	 * When staging is enabled, modifications to entities are stored to a stage.
+	 * This ensures that arrays are not modified while iterating. Modifications are
+	 * merged back to the "main stage" when ecs_readonly_end is invoked.
+	 *
+	 * While the world is in staging mode, no structural changes (add/remove/...)
+	 * can be made to the world itself. Operations must be executed on a stage
+	 * instead (see ecs_get_stage).
+	 *
+	 * This function should only be ran from the main thread.
+	 *
+	 * @return Whether world is currently staged.
+	 */
+	fn readonly_begin(&self) -> bool {
+		unsafe { ecs_readonly_begin(self.world) }
+	}
 
-    /** End staging.
-     * Leaves staging mode. After this operation the world may be directly mutated
-     * again. By default this operation also merges data back into the world, unless
-     * automerging was disabled explicitly.
-     *
-     * This function should only be ran from the main thread.
-     */
-    fn readonly_end(&self) {
-        unsafe { ecs_readonly_end(self.world); }
-    }
+	/** End staging.
+	 * Leaves staging mode. After this operation the world may be directly mutated
+	 * again. By default this operation also merges data back into the world, unless
+	 * automerging was disabled explicitly.
+	 *
+	 * This function should only be ran from the main thread.
+	 */
+	fn readonly_end(&self) {
+		unsafe {
+			ecs_readonly_end(self.world);
+		}
+	}
 
-    /** Defer operations until end of frame. 
-     * When this operation is invoked while iterating, operations inbetween the
-     * defer_begin and defer_end operations are executed at the end of the frame.
-     *
-     * This operation is thread safe.
-     */
-    fn defer_begin(&self) -> bool {
-        unsafe { ecs_defer_begin(self.world) }
-    }
+	/** Defer operations until end of frame.
+	 * When this operation is invoked while iterating, operations inbetween the
+	 * defer_begin and defer_end operations are executed at the end of the frame.
+	 *
+	 * This operation is thread safe.
+	 */
+	fn defer_begin(&self) -> bool {
+		unsafe { ecs_defer_begin(self.world) }
+	}
 
-    /** End block of operations to defer. 
-     * See defer_begin.
-     *
-     * This operation is thread safe.
-     */
-    fn defer_end(&self) -> bool {
-        unsafe { ecs_defer_end(self.world) }
-    }
+	/** End block of operations to defer.
+	 * See defer_begin.
+	 *
+	 * This operation is thread safe.
+	 */
+	fn defer_end(&self) -> bool {
+		unsafe { ecs_defer_end(self.world) }
+	}
 
-    /** Test whether deferring is enabled.
-     */
-    fn is_deferred(&self) -> bool {
-        unsafe { ecs_is_deferred(self.world) }
-    }
+	/** Test whether deferring is enabled.
+	 */
+	fn is_deferred(&self) -> bool {
+		unsafe { ecs_is_deferred(self.world) }
+	}
 
-    /** Test whether the current world object is readonly.
-     * This function allows the code to test whether the currently used world
-     * object is readonly or whether it allows for writing.
-     *
-     * @return True if the world or stage is readonly.
-     */
-    fn is_readonly(&self) -> bool {
-        unsafe { ecs_stage_is_readonly(self.world) }
-    }
+	/** Test whether the current world object is readonly.
+	 * This function allows the code to test whether the currently used world
+	 * object is readonly or whether it allows for writing.
+	 *
+	 * @return True if the world or stage is readonly.
+	 */
+	fn is_readonly(&self) -> bool {
+		unsafe { ecs_stage_is_readonly(self.world) }
+	}
 
 	pub fn find_entity(&self, entity: EntityId) -> Option<Entity> {
 		let entity = Entity::new(self.world, entity);
@@ -235,12 +231,8 @@ impl World {
 		let name_c_str = std::ffi::CString::new(name).unwrap();
 		let sep = NAME_SEP.as_ptr() as *const i8;
 
-		let entity = unsafe { 
-			ecs_lookup_path_w_sep(self.world, 
-				0, 
-				name_c_str.as_ptr() as *const i8, 
-				sep, 
-				sep, true) 
+		let entity = unsafe {
+			ecs_lookup_path_w_sep(self.world, 0, name_c_str.as_ptr() as *const i8, sep, sep, true)
 		};
 
 		if entity > 0 {
@@ -263,7 +255,7 @@ impl World {
 		}
 
 		let comp_id = self.id::<T>().unwrap();
-		let entity = comp_id.clone();	// entity = the component for singleton
+		let entity = comp_id.clone(); // entity = the component for singleton
 		self.set(entity, value);
 	}
 
@@ -275,28 +267,27 @@ impl World {
 		}
 
 		let comp_id = self.id::<T>().unwrap();
-		let entity = comp_id.clone();	// entity = the component for singleton
+		let entity = comp_id.clone(); // entity = the component for singleton
 
-		let dest = unsafe { 
-			ecs_get_mut_id(self.world, entity.raw(), comp_id.raw()) 
-		};
+		let dest = unsafe { ecs_get_mut_id(self.world, entity.raw(), comp_id.raw()) };
 
 		if dest.is_null() {
 			return None;
 		}
 		Some(unsafe { (dest as *mut T).as_mut().unwrap() })
 	}
-	
-	/// Get a singleton component 
+
+	/// Get a singleton component
 	pub fn get_singleton<'a, T: Component>(&'a self) -> Option<&'a T> {
 		let comp = self.id::<T>().expect("singleton entity does not exist");
-		let entity = comp.clone();	// entity = the component for singleton
+		let entity = comp.clone(); // entity = the component for singleton
 		self.get_internal::<T>(entity, comp.raw())
 	}
-	
+
 	// TODO: should we make this return an option over panicing?
 	pub fn get<'a, T: Component>(&'a self, entity: Entity) -> Option<&'a T> {
-		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
+		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world)
+			.expect("Component type not registered!");
 		self.get_internal::<T>(entity, comp_id)
 	}
 
@@ -309,22 +300,24 @@ impl World {
 	}
 
 	pub fn add<T: Component>(&self, entity: Entity) {
-        // flecs_static_assert(is_flecs_constructible<T>::value,
-        //     "cannot default construct type: add T::T() or use emplace<T>()");
-		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
-        unsafe { ecs_add_id(self.world, entity.raw(), comp_id) };
+		// flecs_static_assert(is_flecs_constructible<T>::value,
+		//     "cannot default construct type: add T::T() or use emplace<T>()");
+		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world)
+			.expect("Component type not registered!");
+		unsafe { ecs_add_id(self.world, entity.raw(), comp_id) };
 	}
 
 	pub fn set<T: Component>(&self, entity: Entity, value: T) {
-		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
-		let dest = unsafe { ecs_get_mut_id(self.world, entity.raw(), comp_id) } ;
+		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world)
+			.expect("Component type not registered!");
+		let dest = unsafe { ecs_get_mut_id(self.world, entity.raw(), comp_id) };
 		let dest = unsafe { (dest as *mut T).as_mut().unwrap() };
 		*dest = value;
 	}
 
 	pub fn set_component(&self, entity: EntityId, comp: EntityId, data: &[u8]) {
 		let info = get_component_info(self.world, comp).expect("Component type not registered!");
-		let dest = unsafe { 
+		let dest = unsafe {
 			let ptr = ecs_get_mut_id(self.world, entity, comp) as *mut u8;
 			std::slice::from_raw_parts_mut(ptr, info.size as usize)
 		};
@@ -345,7 +338,7 @@ impl World {
 			return None;
 		}
 
-		let src = unsafe { 
+		let src = unsafe {
 			let ptr = ecs_get_id(self.world, entity, comp) as *const u8;
 			if ptr.is_null() {
 				return None;
@@ -357,9 +350,14 @@ impl World {
 		Some(src)
 	}
 
-	pub fn write_component<F: FnMut(&mut [u8])>(&self, entity: EntityId, comp: EntityId, mut writer: F) {
+	pub fn write_component<F: FnMut(&mut [u8])>(
+		&self,
+		entity: EntityId,
+		comp: EntityId,
+		mut writer: F,
+	) {
 		let info = get_component_info(self.world, comp).expect("Component type not registered!");
-		let dest = unsafe { 
+		let dest = unsafe {
 			let ptr = ecs_get_mut_id(self.world, entity, comp) as *mut u8;
 			std::slice::from_raw_parts_mut(ptr, info.size as usize)
 		};
@@ -377,8 +375,9 @@ impl World {
 		None
 	}
 
-    pub fn component_id<T: Component>(&mut self) -> u64  {
-		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world).expect("Component type not registered!");
+	pub fn component_id<T: Component>(&mut self) -> u64 {
+		let comp_id = WorldInfoCache::get_component_id_for_type::<T>(self.world)
+			.expect("Component type not registered!");
 		comp_id
 	}
 
@@ -395,90 +394,98 @@ impl World {
 		register_component_dynamic(self.world, symbol, None, layout)
 	}
 
-	pub fn component_dynamic_named(&mut self, symbol: &'static str, name: &'static str, layout: Layout) -> EntityId {
+	pub fn component_dynamic_named(
+		&mut self,
+		symbol: &'static str,
+		name: &'static str,
+		layout: Layout,
+	) -> EntityId {
 		register_component_dynamic(self.world, symbol, Some(name), layout)
 	}
 
-    /** Count entities matching a component id.
-     *
-     * @param component_id The component id.
-     */
-    fn count_component_id(&self, component_id: EntityId) -> i32 {
-        unsafe { ecs_count_id(self.world, component_id) }
-    }
+	/** Count entities matching a component id.
+	 *
+	 * @param component_id The component id.
+	 */
+	fn count_component_id(&self, component_id: EntityId) -> i32 {
+		unsafe { ecs_count_id(self.world, component_id) }
+	}
 
-    /** Count entities matching a component by type.
-     *
-     * @tparam T The component type.
-     */
+	/** Count entities matching a component by type.
+	 *
+	 * @tparam T The component type.
+	 */
 	pub fn count_component<T: 'static>(&self) -> i32 {
 		let component_id = register_component_typed::<T>(self.world, None);
-        unsafe { ecs_count_id(self.world, component_id) }
+		unsafe { ecs_count_id(self.world, component_id) }
 	}
 
-    /** Remove all instances of specified component id. */
-    fn remove_all_with_component_id(&mut self, component_id: EntityId) {
-        unsafe { ecs_remove_all(self.world, component_id); }
-    }
+	/** Remove all instances of specified component id. */
+	fn remove_all_with_component_id(&mut self, component_id: EntityId) {
+		unsafe {
+			ecs_remove_all(self.world, component_id);
+		}
+	}
 
-    /** Remove all instances of specified component. */
+	/** Remove all instances of specified component. */
 	pub fn remove_all_with_component<T: 'static>(&mut self) {
 		let component_id = register_component_typed::<T>(self.world, None);
-        unsafe { ecs_remove_all(self.world, component_id); }
+		unsafe {
+			ecs_remove_all(self.world, component_id);
+		}
 	}
 
-    /** Check if entity id exists in the world.
-     * 
-     * @see ecs_exists
-     */
-    fn exists(&self, e: EntityId) -> bool {
-        unsafe { ecs_exists(self.world, e) }
-    }
+	/** Check if entity id exists in the world.
+	 *
+	 * @see ecs_exists
+	 */
+	fn exists(&self, e: EntityId) -> bool {
+		unsafe { ecs_exists(self.world, e) }
+	}
 
-    /** Check if entity id exists in the world.
-     *
-     * @see ecs_is_alive
-     */
-    fn is_alive(&self, e: EntityId) -> bool {
-        unsafe { ecs_is_alive(self.world, e) }
-    }
+	/** Check if entity id exists in the world.
+	 *
+	 * @see ecs_is_alive
+	 */
+	fn is_alive(&self, e: EntityId) -> bool {
+		unsafe { ecs_is_alive(self.world, e) }
+	}
 
-    /** Check if entity id is valid.
-     * Invalid entities cannot be used with API functions.
-     * 
-     * @see ecs_is_valid
-     */
-    fn is_valid(&self, e: EntityId) -> bool {
-        unsafe { ecs_is_valid(self.world, e) }
-    }
+	/** Check if entity id is valid.
+	 * Invalid entities cannot be used with API functions.
+	 *
+	 * @see ecs_is_valid
+	 */
+	fn is_valid(&self, e: EntityId) -> bool {
+		unsafe { ecs_is_valid(self.world, e) }
+	}
 
 	// Systems
 
 	pub fn system(&self) -> SystemBuilder {
 		let sb = SystemBuilder::new(self);
-        sb
-    }	
-
+		sb
+	}
 
 	// Filters
 
 	pub fn filter<'a, G: ComponentGroup<'a>>(&'a self) -> FilterGroup<'a, G> {
 		let filter: FilterGroup<'a, G> = FilterGroup::new(self);
-        filter
-    }	
+		filter
+	}
 
 	pub fn filter_builder(&self) -> FilterBuilder {
 		let filter_builder = FilterBuilder::new(self);
-        filter_builder
-    }	
+		filter_builder
+	}
 
 	pub fn query(&self) -> QueryBuilder {
 		let builder = QueryBuilder::new(self);
-        builder
-    }	
+		builder
+	}
 
 	// Iterate through all entities matching 1 component
-	// TODO: can eliminate this in favor of more general each() once I can fix the 
+	// TODO: can eliminate this in favor of more general each() once I can fix the
 	// single macro issues
 	pub fn each1<A: Component>(&self, mut cb: impl FnMut(Entity, &A)) {
 		let filter = Filter::new_1::<A>(self.raw());
@@ -492,12 +499,12 @@ impl World {
 	pub fn each<'a, G: ComponentGroup<'a>>(&'a self, cb: impl FnMut(Entity, G::RefTuple)) {
 		let filter: FilterGroup<'a, G> = FilterGroup::new(self);
 		filter.each(cb);
-    }	
+	}
 
 	pub fn each_mut<'a, G: ComponentGroup<'a>>(&'a self, cb: impl FnMut(Entity, G::MutRefTuple)) {
 		let filter: FilterGroup<'a, G> = FilterGroup::new(self);
 		filter.each_mut(cb);
-    }	
+	}
 
 	/** Load plecs string.
 	 * @see ecs_plecs_from_str
@@ -505,9 +512,12 @@ impl World {
 	fn plecs_from_str(&mut self, name: &str, plecs_str: &str) -> i32 {
 		let name_c_str = std::ffi::CString::new(name).unwrap();
 		let plecs_c_str = std::ffi::CString::new(plecs_str).unwrap();
-		unsafe { ecs_plecs_from_str(self.world, 
-			name_c_str.as_ptr() as *const i8, 
-			plecs_c_str.as_ptr() as *const i8) 
+		unsafe {
+			ecs_plecs_from_str(
+				self.world,
+				name_c_str.as_ptr() as *const i8,
+				plecs_c_str.as_ptr() as *const i8,
+			)
 		}
 	}
 
@@ -518,7 +528,7 @@ impl World {
 		let filename_c_str = std::ffi::CString::new(filename).unwrap();
 		unsafe { ecs_plecs_from_file(self.world, filename_c_str.as_ptr() as *const i8) }
 	}
-		
+
 	/** Serialize world to JSON.
 	 */
 	fn to_json(&self) -> String {
@@ -530,14 +540,14 @@ impl World {
 
 	/** Deserialize JSON into world.
 	 */
-	fn from_json(&mut self, json: &str) {	//, flecs::from_json_desc_t *desc = nullptr) {
+	fn from_json(&mut self, json: &str) {
+		//, flecs::from_json_desc_t *desc = nullptr) {
 		let json_c_str = std::ffi::CString::new(json).unwrap();
 		let desc = std::ptr::null();
 		unsafe {
 			let result = ecs_world_from_json(self.world, json_c_str.as_ptr() as *const i8, desc);
 		}
 	}
-
 }
 
 impl Drop for World {
@@ -555,17 +565,19 @@ impl Drop for World {
 // Additional Add-ons support
 impl World {
 	pub fn enable_rest(&self) {
-    let rest_comp_id = unsafe { FLECS__EEcsRest as u64 };
+		let rest_comp_id = unsafe { FLECS__EEcsRest as u64 };
 		let rest_comp_size = std::mem::size_of::<EcsRest>();
-		
+
 		let rest_data: EcsRest = unsafe { MaybeUninit::zeroed().assume_init() };
 
-		unsafe { 
-			ecs_set_id(self.raw(), 
-				0, 
-				rest_comp_id, 
-				rest_comp_size, 
-				&rest_data as *const EcsRest as *const ::std::os::raw::c_void) 
+		unsafe {
+			ecs_set_id(
+				self.raw(),
+				0,
+				rest_comp_id,
+				rest_comp_size,
+				&rest_data as *const EcsRest as *const ::std::os::raw::c_void,
+			)
 		};
 	}
 }
@@ -573,29 +585,33 @@ impl World {
 #[cfg(test)]
 mod world_tests {
 	use super::*;
-	struct CompA { v: i32 }
-	struct CompB { v: f32 }
+	struct CompA {
+		v: i32,
+	}
+	struct CompB {
+		v: f32,
+	}
 
 	fn create_test_world() -> World {
 		let mut world = World::new();
 
 		world.component::<CompA>().named("CompA");
 		world.component::<CompB>().named("CompB");
-	
+
 		world.entity().set(CompA { v: 1234 }).set(CompB { v: 123.0 });
 		world.entity().set(CompA { v: 2468 }).set(CompB { v: 99.0 });
 
 		world
 	}
 
-    #[test]
-    fn world_new() {
+	#[test]
+	fn world_new() {
 		let world = create_test_world();
 		assert_eq!(world.count_component::<CompA>(), 2);
 	}
 
-    #[test]
-    fn world_reset() {
+	#[test]
+	fn world_reset() {
 		let mut world = create_test_world();
 		assert_eq!(world.count_component::<CompA>(), 2);
 
@@ -607,16 +623,16 @@ mod world_tests {
 		assert_eq!(world.count_component::<CompA>(), 0);
 	}
 
-    #[test]
-    fn world_remove_all() {
+	#[test]
+	fn world_remove_all() {
 		let mut world = create_test_world();
 		assert_eq!(world.count_component::<CompA>(), 2);
 		world.remove_all_with_component::<CompA>();
 		assert_eq!(world.count_component::<CompA>(), 0);
-	}	
+	}
 
-    #[test]
-    fn world_load_plecs() {
+	#[test]
+	fn world_load_plecs() {
 		let mut world = create_test_world();
 		let plecs = r"
 			// To see what the result of parsing this file looks like, copy the code and
@@ -657,8 +673,8 @@ mod world_tests {
 		assert_eq!(world.count_component_id(position_component), 1);
 	}
 
-    #[test]
-    fn world_json() {
+	#[test]
+	fn world_json() {
 		let world = create_test_world();
 		let json = world.to_json();
 		assert_eq!(json.contains("CompA"), true);

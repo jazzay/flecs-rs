@@ -16,7 +16,7 @@ fn main() {
 
 	let mut bindings = bindgen::Builder::default()
 		.header("flecs.h")
-		.clang_arg("-fvisibility=default")	// Necessary for Emscripten target.
+		.clang_arg("-fvisibility=default") // Necessary for Emscripten target.
 		.generate_comments(false)
 		.layout_tests(false)
 		// Tell cargo to invalidate the built crate whenever any of the
@@ -37,7 +37,9 @@ fn main() {
 		println!("Used Include Path: {}", include_path);
 
         bindings = bindings.clang_arg(include_flag);
-    }
+	}
+
+	let bindings = bindings.generate().expect("Unable to generate bindings");
 
     // export comments from flecs source
     let bindings = bindings

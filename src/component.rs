@@ -1,7 +1,7 @@
 use std::alloc::Layout;
 
-use crate::*;
 use crate::cache::WorldInfoCache;
+use crate::*;
 
 // This is WIP!
 
@@ -10,7 +10,10 @@ use crate::cache::WorldInfoCache;
 //		for example Position {} -> 'module.Position'
 //		then plugins could lookup/cache the runtime id via those names
 
-pub(crate) fn register_component_typed<T: 'static>(world: *mut ecs_world_t, name: Option<&str>) -> EntityId {
+pub(crate) fn register_component_typed<T: 'static>(
+	world: *mut ecs_world_t,
+	name: Option<&str>,
+) -> EntityId {
 	// see if we already cached it
 	if let Some(comp_id) = WorldInfoCache::get_component_id_for_type::<T>(world) {
 		return comp_id;
@@ -53,42 +56,47 @@ pub(crate) fn register_component_typed<T: 'static>(world: *mut ecs_world_t, name
 	// specific aspects of the symbol as well. But this may not jive with general Flecs-rs users...
 	let symbol = name.clone();
 
-	let comp_id = register_component(world, 
-		ComponentDescriptor { 
-			symbol,
-			name, 
-			custom_id: None,
-			layout 
-	});
+	let comp_id =
+		register_component(world, ComponentDescriptor { symbol, name, custom_id: None, layout });
 
-    //println!("Registered Component: {} -> {}", symbol, comp_id);
+	//println!("Registered Component: {} -> {}", symbol, comp_id);
 	WorldInfoCache::register_component_id_for_type_id(world, comp_id, type_id);
 	comp_id
 }
 
-pub(crate) fn register_component_dynamic(world: *mut ecs_world_t, symbol: &'static str, name: Option<&'static str>, layout: Layout) -> EntityId {
+pub(crate) fn register_component_dynamic(
+	world: *mut ecs_world_t,
+	symbol: &'static str,
+	name: Option<&'static str>,
+	layout: Layout,
+) -> EntityId {
 	// see if we already cached it
 	if let Some(comp_info) = WorldInfoCache::get_component_id_for_symbol(world, symbol) {
 		return comp_info.id;
 	}
-	let comp_id = register_component(world, 
-		ComponentDescriptor { 
-			symbol: symbol.to_owned(), 
-			name: name.unwrap_or("").to_owned(), 
+	let comp_id = register_component(
+		world,
+		ComponentDescriptor {
+			symbol: symbol.to_owned(),
+			name: name.unwrap_or("").to_owned(),
 			custom_id: None,
-			layout 
-	});
+			layout,
+		},
+	);
 
 	WorldInfoCache::register_component_id_for_symbol(world, comp_id, symbol, layout.size());
 	comp_id
 }
 
 // Looks up the EcsComponent data on a Component entity
-pub(crate) fn get_component_info(world: *mut ecs_world_t, comp_e: ecs_entity_t) -> Option<EcsComponent> {
+pub(crate) fn get_component_info(
+	world: *mut ecs_world_t,
+	comp_e: ecs_entity_t,
+) -> Option<EcsComponent> {
 	// flecs stores info about components (size, align) within the world
 	// these are built-in components which we can acess via special component ids
 	let id = unsafe { FLECS__EEcsComponent as u64 };
-	let raw = unsafe { ecs_get_id(world, comp_e, id) };	
+	let raw = unsafe { ecs_get_id(world, comp_e, id) };
 	if raw.is_null() {
 		return None;
 	}
@@ -100,10 +108,10 @@ pub(crate) fn get_component_info(world: *mut ecs_world_t, comp_e: ecs_entity_t) 
 
 #[derive(Debug)]
 pub struct ComponentDescriptor {
-	pub symbol: String, 
-	pub name: String, 
+	pub symbol: String,
+	pub name: String,
 	pub custom_id: Option<u64>,
-	pub layout: std::alloc::Layout
+	pub layout: std::alloc::Layout,
 }
 
 pub fn register_component(world: *mut ecs_world_t, desc: ComponentDescriptor) -> ecs_entity_t {
@@ -127,7 +135,7 @@ pub fn register_component(world: *mut ecs_world_t, desc: ComponentDescriptor) ->
 	entity_desc.sep = sep.as_ptr() as *const i8;
 	entity_desc.root_sep = sep.as_ptr() as *const i8;
 
-    let entity = unsafe { ecs_entity_init(world, &entity_desc) };
+	let entity = unsafe { ecs_entity_init(world, &entity_desc) };
 
 	// only register a ecs component if size > 0
 	if desc.layout.size() > 0 {

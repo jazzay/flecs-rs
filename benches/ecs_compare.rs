@@ -46,22 +46,19 @@ mod bevy_bench {
 		pub fn new() -> Self {
 			Self
 		}
-	
+
 		pub fn run(&mut self) {
 			insert_entities(ITER_COUNT);
 		}
-	
+
 		pub fn run_batched(&mut self) {
 			let mut world = World::new();
-			world.spawn_batch((0..ITER_COUNT).map(|_| {
-				(
-					Position::default(),
-					Rotation::default(),
-					Velocity::default(),
-				)
-			}));
+			world.spawn_batch(
+				(0..ITER_COUNT)
+					.map(|_| (Position::default(), Rotation::default(), Velocity::default())),
+			);
 		}
-	}	
+	}
 
 	pub struct SimpleIter(World);
 
@@ -69,26 +66,22 @@ mod bevy_bench {
 		pub fn new() -> Self {
 			let mut world = World::new();
 			world.spawn_batch((0..ITER_COUNT).map(|_| {
-				(
-					Position::default(),
-					Rotation::default(),
-					Velocity { x: 1.0, y: 1.0, z: 1.0 },
-				)
+				(Position::default(), Rotation::default(), Velocity { x: 1.0, y: 1.0, z: 1.0 })
 			}));
-	
+
 			Self(world)
 		}
-	
+
 		pub fn run(&mut self) {
 			let mut query = self.0.query::<(&Velocity, &mut Position)>();
-	
+
 			for (velocity, mut position) in query.iter_mut(&mut self.0) {
 				position.x += velocity.x;
 				position.y += velocity.y;
 				position.z += velocity.z;
 			}
 		}
-	}	
+	}
 }
 
 mod hecs_bench {
@@ -133,22 +126,19 @@ mod hecs_bench {
 		pub fn new() -> Self {
 			Self
 		}
-	
+
 		pub fn run(&mut self) {
 			insert_entities(ITER_COUNT);
 		}
 
 		pub fn run_batched(&mut self) {
 			let mut world = World::new();
-			world.spawn_batch((0..ITER_COUNT).map(|_| {
-				(
-					Position::default(),
-					Rotation::default(),
-					Velocity::default(),
-				)
-			}));
+			world.spawn_batch(
+				(0..ITER_COUNT)
+					.map(|_| (Position::default(), Rotation::default(), Velocity::default())),
+			);
 		}
-	}	
+	}
 
 	pub struct SimpleIter(World);
 
@@ -156,16 +146,12 @@ mod hecs_bench {
 		pub fn new() -> Self {
 			let mut world = World::new();
 			world.spawn_batch((0..ITER_COUNT).map(|_| {
-				(
-					Position::default(),
-					Rotation::default(),
-					Velocity { x: 1.0, y: 1.0, z: 1.0 },
-				)
+				(Position::default(), Rotation::default(), Velocity { x: 1.0, y: 1.0, z: 1.0 })
 			}));
-	
+
 			Self(world)
 		}
-	
+
 		pub fn run(&mut self) {
 			for (_, (velocity, position)) in self.0.query_mut::<(&Velocity, &mut Position)>() {
 				position.x += velocity.x;
@@ -186,7 +172,7 @@ mod flax_bench {
 		y: f32,
 		z: f32,
 	}
-	
+
 	component! {
 		pos: Vec3,
 		rot: Vec3,
@@ -199,7 +185,7 @@ mod flax_bench {
 			EntityBuilder::new()
 				.set_default(pos())
 				.set_default(rot())
-				.set(vel(), Vec3 { x: 1.0, y: 1.0, z: 1.0})
+				.set(vel(), Vec3 { x: 1.0, y: 1.0, z: 1.0 })
 				.spawn(&mut world);
 		}
 		world
@@ -211,7 +197,7 @@ mod flax_bench {
 		pub fn new() -> Self {
 			Self
 		}
-	
+
 		pub fn run(&mut self) {
 			insert_entities(ITER_COUNT);
 		}
@@ -219,23 +205,18 @@ mod flax_bench {
 		pub fn run_batched(&mut self) {
 			let mut world = World::new();
 			let mut batch = BatchSpawn::new(ITER_COUNT);
-			
-			batch
-				.set(pos(), (0..).map(|_| { Vec3::default() }))
-				.expect("Invalid length");
+
+			batch.set(pos(), (0..).map(|_| Vec3::default())).expect("Invalid length");
+
+			batch.set(rot(), (0..).map(|_| Vec3::default())).expect("Invalid length");
 
 			batch
-				.set(rot(), (0..).map(|_| { Vec3::default() }))
+				.set(vel(), (0..).map(|_| Vec3 { x: 1.0, y: 1.0, z: 1.0 }))
 				.expect("Invalid length");
 
-			batch
-				.set(vel(), (0..).map(|_| { Vec3 { x: 1.0, y: 1.0, z: 1.0} }))
-				.expect("Invalid length");
-				
 			batch.spawn(&mut world);
-
 		}
-	}	
+	}
 
 	pub struct SimpleIter {
 		world: World,
@@ -246,14 +227,11 @@ mod flax_bench {
 		pub fn new() -> Self {
 			let world = insert_entities(ITER_COUNT);
 
-			// with flax we can cache the query easily 
+			// with flax we can cache the query easily
 			let query = Query::new((pos().as_mut(), vel()));
-			Self {
-				world,
-				query
-			}
+			Self { world, query }
 		}
-	
+
 		pub fn run(&mut self) {
 			for (pos, vel) in &mut self.query.borrow(&self.world) {
 				*pos = Vec3 { x: pos.x + vel.x, y: pos.y + vel.y, z: pos.z + vel.z };
@@ -294,10 +272,11 @@ mod flecs_bench {
 		world.component::<Velocity>();
 
 		for _ in 0..count {
-			world.entity()
-				.set(Position::default())
-				.set(Velocity::default())
-				.set(Velocity { x: 1.0, y: 1.0, z: 1.0 });
+			world.entity().set(Position::default()).set(Velocity::default()).set(Velocity {
+				x: 1.0,
+				y: 1.0,
+				z: 1.0,
+			});
 		}
 		world
 	}
@@ -314,9 +293,8 @@ mod flecs_bench {
 		}
 
 		// TODO
-		pub fn _run_batched(&mut self) {
-		}
-	}	
+		pub fn _run_batched(&mut self) {}
+	}
 
 	pub struct SimpleIter(World);
 
@@ -325,7 +303,7 @@ mod flecs_bench {
 			let world = insert_entities(ITER_COUNT);
 			Self(world)
 		}
-	
+
 		pub fn run_each(&mut self) {
 			// while more friendly to the user, this is 20x slower compared to iter()
 			//		until we can get some performance improvements related to Tuples use.
@@ -356,64 +334,60 @@ mod flecs_bench {
 }
 
 fn bench_simple_insert(c: &mut Criterion) {
-    let mut group = c.benchmark_group("simple_insert");
-    group.bench_function("bevy_single", |b| {
-        let mut bench = bevy_bench::SimpleInsert::new();
-        b.iter(move || bench.run());
-    });
-    group.bench_function("bevy_batched", |b| {
-        let mut bench = bevy_bench::SimpleInsert::new();
-        b.iter(move || bench.run_batched());
-    });
-    group.bench_function("hecs_single", |b| {
-        let mut bench = hecs_bench::SimpleInsert::new();
-        b.iter(move || bench.run());
-    });
-    group.bench_function("hecs_batched", |b| {
-        let mut bench = hecs_bench::SimpleInsert::new();
-        b.iter(move || bench.run_batched());
-    });
-    group.bench_function("flax_single", |b| {
-        let mut bench = flax_bench::SimpleInsert::new();
-        b.iter(move || bench.run());
-    });
-    group.bench_function("flax_batched", |b| {
-        let mut bench = flax_bench::SimpleInsert::new();
-        b.iter(move || bench.run_batched());
-    });
-    group.bench_function("flecs", |b| {
-        let mut bench = flecs_bench::SimpleInsert::new();
-        b.iter(move || bench.run());
-    });
+	let mut group = c.benchmark_group("simple_insert");
+	group.bench_function("bevy_single", |b| {
+		let mut bench = bevy_bench::SimpleInsert::new();
+		b.iter(move || bench.run());
+	});
+	group.bench_function("bevy_batched", |b| {
+		let mut bench = bevy_bench::SimpleInsert::new();
+		b.iter(move || bench.run_batched());
+	});
+	group.bench_function("hecs_single", |b| {
+		let mut bench = hecs_bench::SimpleInsert::new();
+		b.iter(move || bench.run());
+	});
+	group.bench_function("hecs_batched", |b| {
+		let mut bench = hecs_bench::SimpleInsert::new();
+		b.iter(move || bench.run_batched());
+	});
+	group.bench_function("flax_single", |b| {
+		let mut bench = flax_bench::SimpleInsert::new();
+		b.iter(move || bench.run());
+	});
+	group.bench_function("flax_batched", |b| {
+		let mut bench = flax_bench::SimpleInsert::new();
+		b.iter(move || bench.run_batched());
+	});
+	group.bench_function("flecs", |b| {
+		let mut bench = flecs_bench::SimpleInsert::new();
+		b.iter(move || bench.run());
+	});
 }
 
 fn bench_simple_iter(c: &mut Criterion) {
-    let mut group = c.benchmark_group("simple_iter");
-    group.bench_function("bevy", |b| {
-        let mut bench = bevy_bench::SimpleIter::new();
-        b.iter(move || bench.run());
-    });
-    group.bench_function("hecs", |b| {
-        let mut bench = hecs_bench::SimpleIter::new();
-        b.iter(move || bench.run());
-    });
-    group.bench_function("flax", |b| {
-        let mut bench = flax_bench::SimpleIter::new();
-        b.iter(move || bench.run());
-    });
-    group.bench_function("flecs_each", |b| {
-        let mut bench = flecs_bench::SimpleIter::new();
-        b.iter(move || bench.run_each());
-    });
-    group.bench_function("flecs_iter", |b| {
-        let mut bench = flecs_bench::SimpleIter::new();
-        b.iter(move || bench.run_iter());
-    });
+	let mut group = c.benchmark_group("simple_iter");
+	group.bench_function("bevy", |b| {
+		let mut bench = bevy_bench::SimpleIter::new();
+		b.iter(move || bench.run());
+	});
+	group.bench_function("hecs", |b| {
+		let mut bench = hecs_bench::SimpleIter::new();
+		b.iter(move || bench.run());
+	});
+	group.bench_function("flax", |b| {
+		let mut bench = flax_bench::SimpleIter::new();
+		b.iter(move || bench.run());
+	});
+	group.bench_function("flecs_each", |b| {
+		let mut bench = flecs_bench::SimpleIter::new();
+		b.iter(move || bench.run_each());
+	});
+	group.bench_function("flecs_iter", |b| {
+		let mut bench = flecs_bench::SimpleIter::new();
+		b.iter(move || bench.run_iter());
+	});
 }
 
-criterion_group!(
-    benchmarks,
-    bench_simple_insert,
-    bench_simple_iter,
-);
+criterion_group!(benchmarks, bench_simple_insert, bench_simple_iter,);
 criterion_main!(benchmarks);

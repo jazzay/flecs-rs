@@ -1,11 +1,11 @@
-use crate::*;
 use crate::cache::WorldInfoCache;
+use crate::*;
 
 // TODO - This will be merged with FilterGroup once we solve Single elem tuples
 //
 pub struct Filter {
 	world: *mut ecs_world_t,
-	filter: *mut ecs_filter_t,	
+	filter: *mut ecs_filter_t,
 }
 
 // TODO - need to support generalized API via tuples or something
@@ -14,7 +14,8 @@ impl Filter {
 		let mut desc: ecs_filter_desc_t = unsafe { MaybeUninit::zeroed().assume_init() };
 
 		// TODO: add batch type lookup!
-		desc.terms[0].id = WorldInfoCache::get_component_id_for_type::<A>(world).expect("Component type not registered!");
+		desc.terms[0].id = WorldInfoCache::get_component_id_for_type::<A>(world)
+			.expect("Component type not registered!");
 
 		let filter = unsafe { ecs_filter_init(world, &desc) };
 		Filter { world, filter }
@@ -26,13 +27,13 @@ impl Filter {
 			while ecs_filter_next(&mut it) {
 				let a = ecs_field::<A>(&it, 1);
 				for i in 0..it.count {
-                    let eid = it.entities.offset(i as isize).as_ref().unwrap();
-                    let e = Entity::new(self.world, *eid);
+					let eid = it.entities.offset(i as isize).as_ref().unwrap();
+					let e = Entity::new(self.world, *eid);
 					let va = a.offset(i as isize);
 					cb(e, va.as_ref().unwrap());
 				}
 			}
-		}		
+		}
 	}
 
 	pub fn each<'w, G: ComponentGroup<'w>>(&'w self, mut cb: impl FnMut(Entity, G::RefTuple)) {
@@ -41,23 +42,26 @@ impl Filter {
 			while ecs_filter_next(&mut it) {
 				// Iterate all entities for the type
 				for i in 0..it.count {
-                    let eid = it.entities.offset(i as isize).as_ref().unwrap();
-                    let e = Entity::new(self.world, *eid);
+					let eid = it.entities.offset(i as isize).as_ref().unwrap();
+					let e = Entity::new(self.world, *eid);
 					let rt = G::iter_as_ref_tuple(&it, i as isize);
 					cb(e, rt);
 				}
 			}
-		}				
+		}
 	}
 
-	pub fn each_mut<'w, G: ComponentGroup<'w>>(&mut self, mut cb: impl FnMut(Entity, G::MutRefTuple)) {
+	pub fn each_mut<'w, G: ComponentGroup<'w>>(
+		&mut self,
+		mut cb: impl FnMut(Entity, G::MutRefTuple),
+	) {
 		unsafe {
 			let mut it = ecs_filter_iter(self.world, self.filter);
 			while ecs_filter_next(&mut it) {
 				// Iterate all entities for the type
 				for i in 0..it.count {
-                    let eid = it.entities.offset(i as isize).as_ref().unwrap();
-                    let e = Entity::new(self.world, *eid);
+					let eid = it.entities.offset(i as isize).as_ref().unwrap();
+					let e = Entity::new(self.world, *eid);
 
 					// TODO - performance is poor here due to looking up terms for each tuple entry * each entity
 					// we need to rework this to take slices of components, determined outside the loop
@@ -66,7 +70,7 @@ impl Filter {
 					cb(e, rt);
 				}
 			}
-		}				
+		}
 	}
 
 	pub fn iter<F: FnMut(&Iter)>(&self, mut func: F) {
@@ -76,9 +80,8 @@ impl Filter {
 				let iter = Iter::new(&mut it);
 				func(&iter);
 			}
-		}				
+		}
 	}
-
 }
 
 pub struct FilterBuilder<'w> {
@@ -88,30 +91,26 @@ pub struct FilterBuilder<'w> {
 }
 
 impl<'w> TermBuilder for FilterBuilder<'w> {
-    fn world(&mut self) -> *mut ecs_world_t {
-        self.world.raw()
-    }
-
-	fn filter_desc(&mut self) -> &mut ecs_filter_desc_t {
-        &mut self.desc
+	fn world(&mut self) -> *mut ecs_world_t {
+		self.world.raw()
 	}
 
-    fn current_term(&mut self) -> &mut ecs_term_t {
-        &mut self.desc.terms[self.next_term_index]
-    }
+	fn filter_desc(&mut self) -> &mut ecs_filter_desc_t {
+		&mut self.desc
+	}
 
-    fn next_term(&mut self) {
-        self.next_term_index += 1;
-    }
+	fn current_term(&mut self) -> &mut ecs_term_t {
+		&mut self.desc.terms[self.next_term_index]
+	}
+
+	fn next_term(&mut self) {
+		self.next_term_index += 1;
+	}
 }
 
 impl<'w> FilterBuilder<'w> {
 	pub fn new(world: &'w World) -> Self {
-		Self { 
-			world,
-			desc: unsafe { MaybeUninit::zeroed().assume_init() },
-			next_term_index: 0
-		}
+		Self { world, desc: unsafe { MaybeUninit::zeroed().assume_init() }, next_term_index: 0 }
 	}
 
 	pub fn with_components<'c, G: ComponentGroup<'c>>(mut self) -> Self {
@@ -121,10 +120,7 @@ impl<'w> FilterBuilder<'w> {
 
 	pub fn build(self) -> Filter {
 		let filter = unsafe { ecs_filter_init(self.world.raw(), &self.desc) };
-		Filter { 
-			world: self.world.raw(), 
-			filter 
-		}
+		Filter { world: self.world.raw(), filter }
 	}
 }
 
@@ -142,11 +138,7 @@ impl<'c, G: ComponentGroup<'c>> FilterGroup<'c, G> {
 		unsafe { G::fill_descriptor(world_raw, &mut desc) };
 
 		let filter = unsafe { ecs_filter_init(world_raw, &desc) };
-		FilterGroup { 
-			world, 
-			filter,
-			_phantom: Default::default(),
-		}
+		FilterGroup { world, filter, _phantom: Default::default() }
 	}
 
 	pub fn each(&self, mut cb: impl FnMut(Entity, G::RefTuple)) {
@@ -157,13 +149,13 @@ impl<'c, G: ComponentGroup<'c>> FilterGroup<'c, G> {
 			while ecs_filter_next(&mut it) {
 				// Iterate all entities for the type
 				for i in 0..it.count {
-                    let eid = it.entities.offset(i as isize).as_ref().unwrap();
-                    let e = Entity::new(world_raw, *eid);
+					let eid = it.entities.offset(i as isize).as_ref().unwrap();
+					let e = Entity::new(world_raw, *eid);
 					let rt = G::iter_as_ref_tuple(&it, i as isize);
 					cb(e, rt);
 				}
 			}
-		}				
+		}
 	}
 
 	pub fn each_mut(&self, mut cb: impl FnMut(Entity, G::MutRefTuple)) {
@@ -174,8 +166,8 @@ impl<'c, G: ComponentGroup<'c>> FilterGroup<'c, G> {
 			while ecs_filter_next(&mut it) {
 				// Iterate all entities for the type
 				for i in 0..it.count {
-                    let eid = it.entities.offset(i as isize).as_ref().unwrap();
-                    let e = Entity::new(world_raw, *eid);
+					let eid = it.entities.offset(i as isize).as_ref().unwrap();
+					let e = Entity::new(world_raw, *eid);
 
 					// TODO - performance is poor here due to looking up terms for each tuple entry * each entity
 					// we need to rework this to take slices of components, determined outside the loop
@@ -184,6 +176,6 @@ impl<'c, G: ComponentGroup<'c>> FilterGroup<'c, G> {
 					cb(e, rt);
 				}
 			}
-		}				
+		}
 	}
 }

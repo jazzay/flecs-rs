@@ -1,14 +1,26 @@
 [package]
 name = "flecs"
+description = "Rust bindings for the Flecs Entity Component System"
+version.workspace = true
+edition.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[workspace]
+members = ["flecs-sys"]
+resolver = "2"
+
+[workspace.package]
 version = "0.1.3"
 edition = "2021"
-description = "Rust bindings for the Flecs Entity Component System"
 homepage = "https://www.flecs.dev"
 repository = "https://github.com/jazzay/flecs-rs"
 license = "MIT"
 keywords = ["ecs", "game", "flecs"]
 categories = ["game-engines", "data-structures"]
-rust = "1.68"
+rust-version = "1.68"
 
 [profile.release]
 # debug = true		# Don't accidently submit this!
@@ -19,12 +31,8 @@ rust = "1.68"
 # lto = "fat"
 
 [dependencies]
+flecs-sys = { path = "flecs-sys", version = "*" }
 once_cell = "1.18"
-
-[build-dependencies]
-bindgen = "0.66"
-cc = "1"
-regex = "1.8"
 
 [dev-dependencies]
 hecs = "0.10.3"
@@ -36,58 +44,58 @@ criterion = "0.5"
 export_bindings = []
 
 [[example]]
-name="entity_basics"
+name = "entity_basics"
 path = "examples/entity/basics.rs"
 test = true
 
 [[example]]
-name="entity_hierarchy"
+name = "entity_hierarchy"
 path = "examples/entity/hierarchy.rs"
 test = true
 
 [[example]]
-name="entity_iterate_components"
+name = "entity_iterate_components"
 path = "examples/entity/iterate_components.rs"
 test = true
 
 [[example]]
-name="prefabs"
+name = "prefabs"
 path = "examples/entity/prefabs.rs"
 test = true
 
 [[example]]
-name="relations"
+name = "relations"
 path = "examples/entity/relations.rs"
 test = true
 
 [[example]]
-name="dynamic_components"
+name = "dynamic_components"
 test = true
 
 [[example]]
-name="hello_world"
+name = "hello_world"
 test = true
 
 [[example]]
-name="filters"
+name = "filters"
 test = true
 
 [[example]]
-name="queries_basics"
+name = "queries_basics"
 path = "examples/queries/basics.rs"
 test = true
 
 [[example]]
-name="systems"
+name = "systems"
 test = true
 
 [[example]]
-name="systems_basics"
+name = "systems_basics"
 path = "examples/systems/basics.rs"
 test = true
 
 [[example]]
-name="systems_delta_time"
+name = "systems_delta_time"
 path = "examples/systems/delta_time.rs"
 test = true
 
