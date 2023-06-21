@@ -41,7 +41,7 @@ flax = "0.4.0"
 criterion = "0.5"
 
 [features]
-export_bindings = []
+export_bindings = ["flecs-sys/export_bindings"]
 
 [[example]]
 name = "entity_basics"

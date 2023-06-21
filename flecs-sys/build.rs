@@ -3,12 +3,8 @@ use std::path::PathBuf;
 
 const EM_OS: &str = "emscripten";
 
-fn main() {
-	// Tell cargo to invalidate the built crate whenever the sources change
-	println!("cargo:rerun-if-changed=flecs.h");
-	println!("cargo:rerun-if-changed=flecs.c");
-	println!("cargo:rerun-if-changed=build.rs");
-
+#[cfg(feature = "export_bindings")]
+fn generate_bindings() {
 	// Grab this value because #[cfg(all(target_arch = "wasm32", target_os = "emscripten"))] does not work in build.rs
 	// because it assumes that the target is the default OS target
 	// when you specify wasm32-unknown-emscripten.
@@ -53,23 +49,21 @@ fn main() {
 		.generate()
 		.expect("Unable to generate bindings");
 
-	// We generate bindings to an actual source file so that we get better IDE integration
-	// Sadly to publish on crates.io we cannot write outside the OUT_DIR revisit this later.
-	// let out_path = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-	// bindings
-	// 	.write_to_file(out_path.join("src/bindings.rs"))
-	// 	.expect("Couldn't write bindings!");
+	let crate_root: PathBuf = env::var("CARGO_MANIFEST_DIR").unwrap().into();
+	bindings.write_to_file(crate_root.join("src/bindings.rs")).unwrap();
+}
 
-	let bindings_generated = bindings.to_string();
-	if cfg!(feature = "export_bindings") {
-		let out_path: PathBuf = env::var("CARGO_MANIFEST_DIR").unwrap().into();
-		std::fs::write(out_path.join("bindings.rs"), bindings_generated.clone())
-			.expect("Couldn't write bindings!");
-	}
+fn main() {
+	// Tell cargo to invalidate the built crate whenever the sources change
+	println!("cargo:rerun-if-changed=flecs.h");
+	println!("cargo:rerun-if-changed=flecs.c");
+	println!("cargo:rerun-if-changed=build.rs");
 
-	let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
-	std::fs::write(out_path.join("bindings.rs"), bindings_generated)
-		.expect("Couldn't write bindings!");
+	// if cfg!(feature = "export_bindings") {
+	//     generate_bindings();
+	// }
+	#[cfg(feature = "export_bindings")]
+	generate_bindings();
 
 	// Compile flecs C right into our Rust crate
 	cc::Build::new()
@@ -82,9 +76,11 @@ fn main() {
 		.compile("flecs");
 }
 
+#[cfg(feature = "export_bindings")]
 #[derive(Debug)]
 struct CommentsCallbacks;
 
+#[cfg(feature = "export_bindings")]
 impl bindgen::callbacks::ParseCallbacks for CommentsCallbacks {
 	fn process_comment(&self, comment: &str) -> Option<String> {
 		// 1: trimming the comments
