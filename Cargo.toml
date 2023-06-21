@@ -13,7 +13,7 @@ members = ["flecs-sys"]
 resolver = "2"
 
 [workspace.package]
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 homepage = "https://www.flecs.dev"
 repository = "https://github.com/jazzay/flecs-rs"
