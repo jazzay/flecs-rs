@@ -3,9 +3,9 @@ const EM_OS: &str = "emscripten";
 
 #[cfg(feature = "export_bindings")]
 fn generate_bindings() {
-
 	use std::env;
 	use std::path::PathBuf;
+
 	// Grab this value because #[cfg(all(target_arch = "wasm32", target_os = "emscripten"))] does not work in build.rs
 	// because it assumes that the target is the default OS target
 	// when you specify wasm32-unknown-emscripten.
