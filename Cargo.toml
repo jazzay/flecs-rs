@@ -31,7 +31,7 @@ rust-version = "1.68"
 # lto = "fat"
 
 [dependencies]
-flecs-sys = { path = "flecs-sys" }
+flecs-sys = { path = "flecs-sys", version = "*" }
 once_cell = "1.18"
 
 [dev-dependencies]
@@ -39,6 +39,9 @@ hecs = "0.10.3"
 bevy_ecs = "0.10.1"
 flax = "0.4.0"
 criterion = "0.5"
+
+[features]
+export_bindings = ["flecs-sys/export_bindings"]
 
 [[example]]
 name = "entity_basics"
