@@ -9,7 +9,6 @@ license.workspace = true
 rust-version.workspace = true
 links = "flecs"
 
-
 [dependencies]
 once_cell = "1.18"
 

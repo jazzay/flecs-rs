@@ -30,7 +30,7 @@ pub(crate) fn register_component_typed<T: 'static>(
 		name.to_owned()
 	} else {
 		// Note :: in rust is the module sep, while in flecs it is path sep (parenting)
-		if symbol.contains("<") {
+		if symbol.contains('<') {
 			let mut nested_templates = Vec::new();
 			let mut read_idx = 0;
 			for (i, c) in symbol.chars().enumerate() {
@@ -48,7 +48,7 @@ pub(crate) fn register_component_typed<T: 'static>(
 			stripped_name
 		} else {
 			let s = symbol.replace("::", ".");
-			s.split(".").last().unwrap().to_owned()
+			s.split('.').last().unwrap().to_owned()
 		}
 	};
 
@@ -95,7 +95,7 @@ pub(crate) fn get_component_info(
 ) -> Option<EcsComponent> {
 	// flecs stores info about components (size, align) within the world
 	// these are built-in components which we can acess via special component ids
-	let id = unsafe { FLECS__EEcsComponent as u64 };
+	let id = unsafe { FLECS__EEcsComponent };
 	let raw = unsafe { ecs_get_id(world, comp_e, id) };
 	if raw.is_null() {
 		return None;
@@ -103,7 +103,7 @@ pub(crate) fn get_component_info(
 
 	let c = unsafe { (raw as *const EcsComponent).as_ref().unwrap() };
 	// println!("Got Component info for: {}, size: {}, align: {}", comp_e, c.size, c.alignment);
-	Some(c.clone())
+	Some(*c)
 }
 
 #[derive(Debug)]

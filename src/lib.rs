@@ -143,7 +143,7 @@ mod tests {
 
 		let entity = unsafe { ecs_new_id(world) };
 		let is_alive = unsafe { ecs_is_alive(world, entity) };
-		assert_eq!(is_alive, true);
+		assert!(is_alive);
 
 		let component = register_component(
 			world,
@@ -189,7 +189,7 @@ mod tests {
 
 		unsafe { ecs_delete(world, entity) }
 		let is_alive = unsafe { ecs_is_alive(world, entity) };
-		assert_eq!(is_alive, false);
+		assert!(!is_alive);
 
 		unsafe { ecs_fini(world) };
 	}
