@@ -432,6 +432,11 @@ impl ColumnDynamic {
 		ColumnDynamic { array, count, element_size, is_shared }
 	}
 
+	#[inline]
+	pub fn count(&self) -> usize {
+		self.count
+	}
+
 	pub fn element_size(&self) -> usize {
 		self.element_size
 	}
