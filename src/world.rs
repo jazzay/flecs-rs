@@ -571,7 +571,7 @@ impl Drop for World {
 // Additional Add-ons support
 impl World {
 	pub fn enable_rest(&self) {
-		let rest_comp_id = unsafe { FLECS__EEcsRest };
+		let rest_comp_id = unsafe { FLECS_IDEcsRestID_ };
 		let rest_comp_size = std::mem::size_of::<EcsRest>();
 
 		let rest_data: EcsRest = unsafe { MaybeUninit::zeroed().assume_init() };

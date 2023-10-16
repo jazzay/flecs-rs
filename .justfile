@@ -22,3 +22,6 @@ bench:
 # Generates rust binding for Flecs C api
 bindings:
   cargo build --features export_bindings
+
+examples:
+	make run-examples

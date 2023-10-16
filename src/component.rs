@@ -95,7 +95,7 @@ pub(crate) fn get_component_info(
 ) -> Option<EcsComponent> {
 	// flecs stores info about components (size, align) within the world
 	// these are built-in components which we can acess via special component ids
-	let id = unsafe { FLECS__EEcsComponent };
+	let id = unsafe { FLECS_IDEcsComponentID_ };
 	let raw = unsafe { ecs_get_id(world, comp_e, id) };
 	if raw.is_null() {
 		return None;
