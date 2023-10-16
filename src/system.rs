@@ -1,4 +1,6 @@
+use std::alloc::{Layout, handle_alloc_error};
 use std::ffi::c_void;
+use std::slice::from_raw_parts;
 
 use crate::cache::WorldInfoCache;
 use crate::*;
@@ -45,6 +47,7 @@ pub struct SystemBuilder<'w> {
 	// we need to keep these in memory until after build
 	name_temp: String,
 	expr_temp: String,
+	set_context: bool,
 
 	next_term_index: usize,
 }
@@ -78,7 +81,30 @@ impl<'w> SystemBuilder<'w> {
 			name_temp: "".to_owned(),
 			expr_temp: "".to_owned(),
 			next_term_index: 0,
+			set_context: false,
 		}
+	}
+
+	pub fn context<T>(mut self, value:T) -> Self {
+		assert!(!self.set_context);
+		let layout = Layout::new::<T>();
+		unsafe {
+			let ptr = std::alloc::alloc(layout);
+			if ptr.is_null() {
+				handle_alloc_error(layout);
+			}
+			*(ptr as *mut T) = value;
+			self.desc.ctx = ptr.cast::<c_void>();
+		};
+		self.set_context = true;
+		self
+	}
+
+	pub fn context_ptr(mut self, ptr: *mut c_void) -> Self {
+		assert!(!self.set_context);
+		self.desc.ctx = ptr;
+		self.set_context = true;
+		self
 	}
 
 	pub fn named(mut self, name: &str) -> Self {
@@ -297,6 +323,13 @@ impl Iter {
 		Self::get_field::<A>(self, index)
 	}
 
+	pub unsafe fn get_context<'a, T>(&'a self) -> &'a T {
+		let context = (*self.it).ctx.cast::<T>()
+			.as_ref()
+			.unwrap();
+		&context
+	}
+
 	fn get_field<T: Component>(&self, index: i32) -> Column<T> {
 		// validate that types match. could avoid this in Release builds perhaps to get max perf
 		let field_id = unsafe { ecs_field_id(self.it, index) };
@@ -357,6 +390,12 @@ impl Iter {
 		let array = unsafe { ecs_field_w_size(self.it, size, index) as *mut u8 };
 
 		ColumnDynamic::new(array, count, size, is_shared)
+	}
+
+	#[inline]
+	pub fn raw_fields<'a>(&'a self) -> &'a [ecs_term_t] {
+		let terms = unsafe { (*self.it).terms };
+		unsafe { from_raw_parts(terms, self.field_count() as usize) }
 	}
 }
 
