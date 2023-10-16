@@ -13,7 +13,7 @@ members = ["flecs-sys"]
 resolver = "2"
 
 [workspace.package]
-version = "0.1.4"
+version = "0.1.5"
 edition = "2021"
 homepage = "https://www.flecs.dev"
 repository = "https://github.com/jazzay/flecs-rs"
@@ -31,7 +31,7 @@ rust-version = "1.68"
 # lto = "fat"
 
 [dependencies]
-flecs-sys = { path = "flecs-sys", version = "0.1.4" }
+flecs-sys = { path = "flecs-sys", version = "0.1.5" }
 once_cell = "1.18"
 
 [dev-dependencies]
