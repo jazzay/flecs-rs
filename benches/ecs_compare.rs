@@ -318,7 +318,7 @@ mod flecs_bench {
 		pub fn run_iter(&mut self) {
 			let f = self.0.filter_builder().with_components::<(Position, Velocity)>().build();
 			f.iter(|it| {
-				let positions = it.field::<Position>(1);
+				let mut positions = it.field::<Position>(1);
 				let velocities = it.field::<Velocity>(2);
 
 				for i in 0..it.count() {
