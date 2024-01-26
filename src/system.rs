@@ -1,4 +1,4 @@
-use std::alloc::{Layout, handle_alloc_error};
+use std::alloc::{handle_alloc_error, Layout};
 use std::ffi::c_void;
 use std::slice::from_raw_parts;
 
@@ -85,7 +85,7 @@ impl<'w> SystemBuilder<'w> {
 		}
 	}
 
-	pub fn context<T>(mut self, value:T) -> Self {
+	pub fn context<T>(mut self, value: T) -> Self {
 		assert!(!self.set_context);
 		let layout = Layout::new::<T>();
 		unsafe {
@@ -324,9 +324,7 @@ impl Iter {
 	}
 
 	pub unsafe fn get_context<'a, T>(&'a self) -> &'a T {
-		let context = (*self.it).ctx.cast::<T>()
-			.as_ref()
-			.unwrap();
+		let context = (*self.it).ctx.cast::<T>().as_ref().unwrap();
 		&context
 	}
 
