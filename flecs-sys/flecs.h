@@ -1,5 +1,5 @@
 // Comment out this line when using as DLL
-#define flecs_STATIC
+//#define flecs_STATIC //this line must be commented each time flecs is updated
 /**
  * @file flecs.h
  * @brief Flecs public API.

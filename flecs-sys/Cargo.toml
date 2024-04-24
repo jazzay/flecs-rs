@@ -19,3 +19,4 @@ regex = "1.8"
 
 [features]
 export_bindings = []
+enable_export_symbols = [] # uses this feature with a Cdylib or a bin with the flag -Zexport-executable-symbols

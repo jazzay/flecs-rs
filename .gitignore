@@ -2,6 +2,7 @@
 Cargo.lock
 
 .vscode
+.idea
 flamegraph.svg
 
 *.o

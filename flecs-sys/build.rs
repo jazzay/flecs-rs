@@ -66,10 +66,16 @@ fn main() {
 	#[cfg(feature = "export_bindings")]
 	generate_bindings();
 
+	#[cfg(not(feature = "enable_export_symbols"))]
+	const FLECS_EXPORT: &str = "flecs_STATIC";
+	#[cfg(feature = "enable_export_symbols")]
+	const FLECS_EXPORT: &str = "flecs_EXPORTS";
+
 	// Compile flecs C right into our Rust crate
 	cc::Build::new()
 		.warnings(true)
 		.extra_warnings(true)
+		.define(FLECS_EXPORT, None)
 		.define("NDEBUG", None)
 		// .flag("-flto")			// no impact on Arm. Perhaps useful to other archs.
 		// .flag("-fuse-ld=lld")	// not available on MacOS/Arm
