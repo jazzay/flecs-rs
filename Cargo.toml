@@ -42,6 +42,7 @@ criterion = "0.5"
 
 [features]
 export_bindings = ["flecs-sys/export_bindings"]
+enable_export_symbols = ["flecs-sys/enable_export_symbols"]
 
 [[example]]
 name = "entity_basics"
